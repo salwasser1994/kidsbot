@@ -30,6 +30,7 @@ quiz_questions = [
     ("Кто изобрёл лампу?", ["Эдисон", "Ньютон", "Тесла", "Дарвин"], "Эдисон"),
 ] * 5  # 50 вопросов
 
+# Уже заданные вопросы по каждому юзеру
 asked_questions = {}
 
 # === АНЕКДОТЫ ===
@@ -55,6 +56,9 @@ riddles = [
 
 # === ЖИВОТНЫЕ ===
 animals = ["Кошка 🐱", "Собака 🐶", "Заяц 🐇", "Лев 🦁", "Слон 🐘", "Медведь 🐻", "Пингвин 🐧", "Крокодил 🐊"]
+
+# Хранение текущих игр
+current_games = {}
 
 # === МЕНЮ ===
 def main_menu():
@@ -127,7 +131,7 @@ async def riddle_answer(callback: CallbackQuery):
 @dp.callback_query(F.data == "guessnum")
 async def guessnum_start(callback: CallbackQuery):
     number = random.randint(1, 10)
-    callback.bot_data["guessnum"] = number
+    current_games[callback.from_user.id] = {"guessnum": number}
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(1, 6)],
         [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(6, 11)],
@@ -137,7 +141,7 @@ async def guessnum_start(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("guess:"))
 async def guessnum_check(callback: CallbackQuery):
-    number = callback.bot_data.get("guessnum", 0)
+    number = current_games.get(callback.from_user.id, {}).get("guessnum", 0)
     choice = int(callback.data.split(":")[1])
     if choice == number:
         await callback.message.edit_text(f"🎉 Молодец! Это {number}!", reply_markup=back_menu())
@@ -159,7 +163,7 @@ async def ask_question(message: Message, user_id: int):
     question, options, correct = random.choice(available)
     asked_questions[user_id].append((question, options, correct))
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_answer:{opt}:{correct}:{user_id}")]
+        inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_answer:{opt}:{correct}")]
                          for opt in options] +
                         [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]]
     )
@@ -167,7 +171,7 @@ async def ask_question(message: Message, user_id: int):
 
 @dp.callback_query(F.data.startswith("quiz_answer"))
 async def quiz_answer(callback: CallbackQuery):
-    _, answer, correct, user_id = callback.data.split(":")
+    _, answer, correct = callback.data.split(":")
     child = get_child(callback.from_user.id)
     if answer == correct:
         users[child]["points"] += 1
@@ -204,7 +208,7 @@ async def rps_play(callback: CallbackQuery):
 @dp.callback_query(F.data == "animal")
 async def animal_start(callback: CallbackQuery):
     correct = random.choice(animals)
-    callback.bot_data["animal"] = correct
+    current_games[callback.from_user.id] = {"animal": correct}
     options = random.sample(animals, 3)
     if correct not in options:
         options[0] = correct
@@ -239,13 +243,13 @@ async def send_math_task(message: Message, user_id: int):
     options = [correct, correct + 1, correct - 1, random.randint(1, 20)]
     random.shuffle(options)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=str(opt), callback_data=f"math_answer:{opt}:{correct}:{user_id}")] for opt in options
+        [InlineKeyboardButton(text=str(opt), callback_data=f"math_answer:{opt}:{correct}")] for opt in options
     ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
     await message.edit_text(f"Сколько будет {a} {op} {b}?", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("math_answer"))
 async def math_answer(callback: CallbackQuery):
-    _, answer, correct, user_id = callback.data.split(":")
+    _, answer, correct = callback.data.split(":")
     child = get_child(callback.from_user.id)
     if answer == correct:
         users[child]["points"] += 1
