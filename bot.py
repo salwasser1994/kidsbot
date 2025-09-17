@@ -1,433 +1,289 @@
-# bot.py
 import asyncio
-import json
 import random
 from datetime import datetime
-from pathlib import Path
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+# === ТОКЕН БОТА ===
+API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
-# === Настройка токена ===
-API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"  # <- замените на реальный токен
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# === Очки сохраняем в файл ===
-POINTS_FILE = Path("points.json")
-
-def load_points():
-    if POINTS_FILE.exists():
-        with open(POINTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def save_points():
-    with open(POINTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(points, f, ensure_ascii=False, indent=2)
-
-points = load_points()
-
-# === Временные игры (в памяти) ===
-# Для "угадай число" храним загаданное число для каждого пользователя
-guess_number_games: dict[str, int] = {}
-# Для викторины можно хранить активный вопрос id (не обязательно сейчас)
-active_quiz: dict[str, int] = {}
-
-# === Профили ===
-profiles = {
-    "Алиса": {
-        "birthday": "2016-06-19",
-        "greetings": "Привет, волшебница Алиса ✨!",
-        "facts": [
-            "Алиса умеет очень быстро собирать пазлы 🧩",
-            "Алиса любит котиков 🐱",
-            "Алиса знает, что слоны боятся мышей 🐘🐭"
-        ],
-        "jokes": [
-            "Почему книга пошла в больницу? Потому что у неё сломалась обложка 📚😂",
-            "Кто всегда идёт, но никогда не приходит? Завтра ⏳",
-            "Почему карандаш грустный? Потому что у него нет точилки ✏️😢"
-        ],
-        "tasks": [
-            "Алиса, попробуй 10 секунд постоять на одной ножке 🦶",
-            "Сможешь назвать 5 фруктов за 15 секунд? 🍎🍌🍇🍊🍓",
-            "Придумай смешное слово из букв Б, К и Л!"
-        ]
-    },
-    "Руслан": {
-        "birthday": "2014-10-04",
-        "greetings": "Здравствуй, исследователь Руслан 🚀!",
-        "facts": [
-            "Руслан — чемпион по скоростному бегу на месте 🏃",
-            "Руслан обожает динозавров 🦖",
-            "Руслан знает, что у акулы более 300 зубов 🦈"
-        ],
-        "jokes": [
-            "Почему компьютер пошёл в школу? Чтобы стать умнее 🤓",
-            "Какая рыба не умеет плавать? Жареная 🐟",
-            "Почему велосипед упал? Потому что он устал 🚲😂"
-        ],
-        "tasks": [
-            "Руслан, попробуй придумать рифму к слову 'школа' 🎓",
-            "Сможешь за 20 секунд назвать 5 животных? 🐶🐱🐰🐯🐴",
-            "Попрыгай 7 раз на месте, как кенгуру 🦘"
-        ]
-    }
+# === ДЕТИ (user_id + данные) ===
+users = {
+    "Руслан": {"id": 7894501725, "birthday": "2014-10-04", "points": 0},
+    "Алиса": {"id": 7719485802, "birthday": "2016-06-19", "points": 0},
 }
 
-# === Общие даты ===
-common_dates = {
-    "new_year": "2026-01-01",
-    "summer_holidays": "2026-06-01"
-}
+# === ВИКТОРИНА (50 случайных вопросов) ===
+quiz_questions = [
+    ("Столица Франции?", ["Париж", "Лондон", "Берлин", "Рим"], "Париж"),
+    ("Сколько будет 2+2?", ["3", "4", "5", "6"], "4"),
+    ("Самая длинная река в мире?", ["Амазонка", "Нил", "Волга", "Янцзы"], "Нил"),
+    ("Как называется спутник Земли?", ["Марс", "Луна", "Венера", "Сатурн"], "Луна"),
+    ("Кто написал 'Войну и мир'?", ["Толстой", "Пушкин", "Гоголь", "Чехов"], "Толстой"),
+    ("Сколько ног у паука?", ["6", "8", "10", "12"], "8"),
+    ("Какая планета ближе всего к Солнцу?", ["Меркурий", "Венера", "Марс", "Юпитер"], "Меркурий"),
+    ("Какой цвет у моркови?", ["Красный", "Оранжевый", "Зелёный", "Фиолетовый"], "Оранжевый"),
+    ("Сколько букв в русском алфавите?", ["32", "33", "34", "31"], "33"),
+    ("Кто изобрёл лампу?", ["Эдисон", "Ньютон", "Тесла", "Дарвин"], "Эдисон"),
+] * 5  # 50 вопросов
 
-# === user_id → имя ребёнка (замени на реальные id) ===
-# Пример:
-# user_to_name = {
-#    7719485802: "Алиса",
-#     222222222: "Руслан"
-# }
-user_to_name: dict[int, str] = {
-    7719485802: "Алиса",
-    987654321: "Руслан"
-}
+asked_questions = {}
 
-# === Вспомогательные ===
-def days_until(date_str: str) -> int:
-    today = datetime.today().date()
-    target = datetime.strptime(date_str, "%Y-%m-%d").date()
-    delta = (target - today).days
-    return delta if delta >= 0 else (target.replace(year=today.year + 1) - today).days
+# === АНЕКДОТЫ ===
+jokes = [
+    "— Папа, а почему солнце встаёт на востоке?\n— Один раз опоздало и его уволили!",
+    "Учитель: Вовочка, почему ты опоздал?\nВовочка: А вы сами говорили — лучше поздно, чем никогда!",
+    "Встречаются два крокодила: — Ты где был? — В Египте. — Ну и как там? — Да нормально, только египтяне всё время бегают и кричат: 'Крокодил! Крокодил!'"
+]
 
-def get_points(user_id: int) -> int:
-    return points.get(str(user_id), 0)
+# === СКАЗКИ ===
+fairytales = [
+    "Жил-был колобок. Он убежал от бабушки, дедушки, но встретил лису... 🦊",
+    "В тридевятом царстве жила-была Василиса Прекрасная... 👸",
+    "Жил-был маленький дракончик. Он боялся летать, но однажды... 🐉"
+]
 
-def add_point(user_id: int, value: int = 1):
-    points[str(user_id)] = get_points(user_id) + value
-    save_points()
+# === ЗАГАДКИ ===
+riddles = [
+    ("Зимой и летом одним цветом. Что это?", "Ёлка"),
+    ("Без окон, без дверей — полна горница людей. Что это?", "Огурец"),
+    ("Висит груша — нельзя скушать. Что это?", "Лампочка"),
+]
 
-# === Клавиатуры ===
+# === ЖИВОТНЫЕ ===
+animals = ["Кошка 🐱", "Собака 🐶", "Заяц 🐇", "Лев 🦁", "Слон 🐘", "Медведь 🐻", "Пингвин 🐧", "Крокодил 🐊"]
+
+# === МЕНЮ ===
 def main_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎲 Игры и задания", callback_data="tasks")],
-        [InlineKeyboardButton(text="🧠 Викторина", callback_data="quiz")],
-        [InlineKeyboardButton(text="🎮 Угадай число", callback_data="guessnum_start")],
-        [InlineKeyboardButton(text="✊✋✌️ Камень-ножницы-бумага", callback_data="rps_start")],
-        [InlineKeyboardButton(text="🎁 Сюрприз", callback_data="surprise")],
-        [InlineKeyboardButton(text="📖 Интересный факт", callback_data="fact")],
-        [InlineKeyboardButton(text="😂 Анекдот", callback_data="joke")],
-        [InlineKeyboardButton(text="📅 Сколько дней до...", callback_data="days")],
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎲 Угадай число", callback_data="guessnum")],
+        [InlineKeyboardButton(text="📖 Сказка", callback_data="fairytale")],
+        [InlineKeyboardButton(text="😆 Анекдот", callback_data="joke")],
+        [InlineKeyboardButton(text="❓ Загадка", callback_data="riddle")],
+        [InlineKeyboardButton(text="🧩 Викторина", callback_data="quiz")],
+        [InlineKeyboardButton(text="✊✌️✋ Камень-Ножницы-Бумага", callback_data="rps")],
+        [InlineKeyboardButton(text="🐾 Угадай животное", callback_data="animal")],
+        [InlineKeyboardButton(text="➕➖✖️ Математический челлендж", callback_data="math")],
         [InlineKeyboardButton(text="🏆 Мои очки", callback_data="points")],
-        [InlineKeyboardButton(text="🙋 Кто я", callback_data="whoami")]
+        [InlineKeyboardButton(text="👤 Кто я", callback_data="whoami")],
+        [InlineKeyboardButton(text="📅 Сколько дней до ДР?", callback_data="birthday")],
     ])
-
-def days_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎂 День рождения Алисы", callback_data="days_alice")],
-        [InlineKeyboardButton(text="🎂 День рождения Руслана", callback_data="days_ruslan")],
-        [InlineKeyboardButton(text="🎄 Новый год", callback_data="days_newyear")],
-        [InlineKeyboardButton(text="☀️ Каникулы", callback_data="days_holidays")],
-        [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")]
-    ])
+    return kb
 
 def back_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")]
+        [InlineKeyboardButton(text="⬅️ Назад в главное меню", callback_data="back")]
     ])
 
-# === Обработчики ===
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    name = user_to_name.get(message.from_user.id)
-    if name:
-        profile = profiles[name]
-        await message.answer(
-            f"{profile['greetings']}\nЧто хочешь сделать?",
-            reply_markup=main_menu()
-        )
-    else:
-        await message.answer(
-            "Привет! Кажется, я пока не знаю тебя. Попроси взрослого добавить твой user_id в конфигурацию бота."
-        )
+# === Определение ребёнка по user_id ===
+def get_child(user_id: int):
+    for name, data in users.items():
+        if data["id"] == user_id:
+            return name
+    return None
 
-@dp.callback_query(F.data == "main_menu")
-async def go_main(callback: types.CallbackQuery):
-    name = user_to_name.get(callback.from_user.id)
-    if name:
-        await callback.message.answer("Главное меню:", reply_markup=main_menu())
+# === СТАРТ ===
+@dp.message(F.text == "/start")
+async def start(message: Message):
+    child = get_child(message.from_user.id)
+    if child:
+        await message.answer(f"Привет, {child}! 👋\nВыбери, что будем делать:", reply_markup=main_menu())
     else:
-        await callback.message.answer("Я тебя пока не знаю 😕")
-    await callback.answer()
+        await message.answer("Привет! 🚫 Ты не зарегистрирован для игры в этом боте.")
 
-# === Кто я ===
-@dp.callback_query(F.data == "whoami")
-async def who_am_i(callback: types.CallbackQuery):
-    name = user_to_name.get(callback.from_user.id)
-    if name:
-        profile = profiles[name]
-        text = (
-            f"Ты — {name} 🎉\n"
-            f"📅 День рождения: {profile['birthday']}\n"
-            f"🎯 Очков: {get_points(callback.from_user.id)}\n"
-            f"💡 Например: {profile['facts'][0]}"
-        )
-        await callback.message.answer(text, reply_markup=back_menu())
-    else:
-        await callback.message.answer("Я тебя пока не знаю 😕", reply_markup=back_menu())
-    await callback.answer()
+# === НАЗАД ===
+@dp.callback_query(F.data == "back")
+async def go_back(callback: CallbackQuery):
+    await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
 
-# === Факт ===
-@dp.callback_query(F.data == "fact")
-async def fact(callback: types.CallbackQuery):
-    name = user_to_name.get(callback.from_user.id)
-    if name:
-        fact_text = random.choice(profiles[name]["facts"])
-        await callback.message.answer(fact_text, reply_markup=back_menu())
-    else:
-        await callback.message.answer("Я тебя пока не знаю 😕", reply_markup=back_menu())
-    await callback.answer()
-
-# === Анекдот ===
+# === АНЕКДОТ ===
 @dp.callback_query(F.data == "joke")
-async def joke(callback: types.CallbackQuery):
-    name = user_to_name.get(callback.from_user.id)
-    if name:
-        joke_text = random.choice(profiles[name]["jokes"])
-        await callback.message.answer(joke_text, reply_markup=back_menu())
-    else:
-        await callback.message.answer("Я тебя пока не знаю 😕", reply_markup=back_menu())
-    await callback.answer()
+async def send_joke(callback: CallbackQuery):
+    await callback.message.edit_text(random.choice(jokes), reply_markup=back_menu())
 
-# === Игры и задания ===
-@dp.callback_query(F.data == "tasks")
-async def task(callback: types.CallbackQuery):
-    name = user_to_name.get(callback.from_user.id)
-    if name:
-        task_text = random.choice(profiles[name]["tasks"])
-        add_point(callback.from_user.id, 1)
-        await callback.message.answer(task_text, reply_markup=back_menu())
-        await callback.message.answer(
-            f"Ты получил 1 очко! 🎯 Всего очков: {get_points(callback.from_user.id)}",
-            reply_markup=back_menu()
-        )
-    else:
-        await callback.message.answer("Я тебя пока не знаю 😕", reply_markup=back_menu())
-    await callback.answer()
+# === СКАЗКА ===
+@dp.callback_query(F.data == "fairytale")
+async def send_fairytale(callback: CallbackQuery):
+    await callback.message.edit_text(random.choice(fairytales), reply_markup=back_menu())
 
-# === Викторина ===
-quiz_questions = [
-    {"q": "Сколько ног у паука?", "options": ["6", "8", "10"], "answer_index": 1},
-    {"q": "Какого цвета банан?", "options": ["Красный", "Жёлтый", "Синий"], "answer_index": 1},
-    {"q": "Кто громче всех кукарекает?", "options": ["Курица", "Петух", "Утка"], "answer_index": 1},
-]
-
-@dp.callback_query(F.data == "quiz")
-async def quiz_start(callback: types.CallbackQuery):
-    qid = random.randrange(len(quiz_questions))
-    active_quiz[str(callback.from_user.id)] = qid
-    q = quiz_questions[qid]
-    buttons = []
-    for idx, opt in enumerate(q["options"]):
-        buttons.append([InlineKeyboardButton(text=opt, callback_data=f"quiz:{qid}:{idx}")])
-    buttons.append([InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")])
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await callback.message.answer(q["q"], reply_markup=kb)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("quiz:"))
-async def quiz_answer(callback: types.CallbackQuery):
-    data = callback.data.split(":")
-    if len(data) != 3:
-        await callback.answer()
-        return
-    qid = int(data[1]); chosen_idx = int(data[2])
-    q = quiz_questions[qid]
-    correct_idx = q["answer_index"]
-    if chosen_idx == correct_idx:
-        add_point(callback.from_user.id, 2)
-        await callback.message.answer("Правильно! 🎉 +2 очка!", reply_markup=back_menu())
-    else:
-        correct_text = q["options"][correct_idx]
-        await callback.message.answer(f"Неправильно — правильный ответ: {correct_text}", reply_markup=back_menu())
-    await callback.answer()
-
-# === Угадай число ===
-def make_guessnum_kb():
-    rows = []
-    # делаем кнопки 1..10 (по 5 в ряд)
-    for i in range(1, 11):
-        rows.append(InlineKeyboardButton(text=str(i), callback_data=f"guessnum_choice:{i}"))
-    # InlineKeyboardMarkup требует список строк -> разобьём по 5
-    keyboard = InlineKeyboardMarkup(row_width=5)
-    keyboard.add(*[InlineKeyboardButton(text=str(i), callback_data=f"guessnum_choice:{i}") for i in range(1, 11)])
-    # добавим назад
-    keyboard.add(InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu"))
-    return keyboard
-
-@dp.callback_query(F.data == "guessnum_start")
-async def guessnum_start(callback: types.CallbackQuery):
-    # загадываем число 1..10
-    secret = random.randint(1, 10)
-    guess_number_games[str(callback.from_user.id)] = secret
-    await callback.message.answer("Я загадал число от 1 до 10. Попробуй угадать!", reply_markup=make_guessnum_kb())
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("guessnum_choice:"))
-async def guessnum_choice(callback: types.CallbackQuery):
-    user_id = str(callback.from_user.id)
-    if user_id not in guess_number_games:
-        await callback.message.answer("Сначала нажми 'Угадай число' чтобы начать игру.", reply_markup=back_menu())
-        await callback.answer()
-        return
-    try:
-        chosen = int(callback.data.split(":")[1])
-    except Exception:
-        await callback.answer()
-        return
-    secret = guess_number_games.pop(user_id, None)
-    if secret is None:
-        await callback.message.answer("Игра не найдена. Нажми 'Угадай число' чтобы начать.", reply_markup=back_menu())
-    else:
-        if chosen == secret:
-            add_point(callback.from_user.id, 3)
-            await callback.message.answer(f"Ура! Ты угадал(а) — это {secret}! 🎉 +3 очка!", reply_markup=back_menu())
-        else:
-            await callback.message.answer(f"Повезёт в следующий раз — я загадал(а) {secret}.", reply_markup=back_menu())
-    await callback.answer()
-
-# === Камень-ножницы-бумага ===
-def rps_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✊ Камень", callback_data="rps:rock"),
-         InlineKeyboardButton(text="✋ Бумага", callback_data="rps:paper"),
-         InlineKeyboardButton(text="✌️ Ножницы", callback_data="rps:scissors")],
-        [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")]
+# === ЗАГАДКА ===
+@dp.callback_query(F.data == "riddle")
+async def send_riddle(callback: CallbackQuery):
+    question, answer = random.choice(riddles)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Показать ответ", callback_data=f"riddle_answer:{answer}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
     ])
+    await callback.message.edit_text(question, reply_markup=kb)
 
-@dp.callback_query(F.data == "rps_start")
-async def rps_start(callback: types.CallbackQuery):
-    await callback.message.answer("Камень, ножницы, бумага! Выбирай:", reply_markup=rps_kb())
-    await callback.answer()
+@dp.callback_query(F.data.startswith("riddle_answer"))
+async def riddle_answer(callback: CallbackQuery):
+    await callback.message.edit_text(f"Ответ: {callback.data.split(':')[1]}", reply_markup=back_menu())
+
+# === УГАДАЙ ЧИСЛО ===
+@dp.callback_query(F.data == "guessnum")
+async def guessnum_start(callback: CallbackQuery):
+    number = random.randint(1, 10)
+    callback.bot_data["guessnum"] = number
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(1, 6)],
+        [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(6, 11)],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+    ])
+    await callback.message.edit_text("Я загадал число от 1 до 10. Попробуй угадать!", reply_markup=kb)
+
+@dp.callback_query(F.data.startswith("guess:"))
+async def guessnum_check(callback: CallbackQuery):
+    number = callback.bot_data.get("guessnum", 0)
+    choice = int(callback.data.split(":")[1])
+    if choice == number:
+        await callback.message.edit_text(f"🎉 Молодец! Это {number}!", reply_markup=back_menu())
+    else:
+        await callback.message.edit_text(f"Нет 😅 Это не {choice}.", reply_markup=back_menu())
+
+# === ВИКТОРИНА ===
+@dp.callback_query(F.data == "quiz")
+async def quiz_start(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    asked_questions[user_id] = []
+    await ask_question(callback.message, user_id)
+
+async def ask_question(message: Message, user_id: int):
+    available = [q for q in quiz_questions if q not in asked_questions[user_id]]
+    if not available:
+        await message.edit_text("Ты ответил на все вопросы! 🎉", reply_markup=back_menu())
+        return
+    question, options, correct = random.choice(available)
+    asked_questions[user_id].append((question, options, correct))
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_answer:{opt}:{correct}:{user_id}")]
+                         for opt in options] +
+                        [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]]
+    )
+    await message.edit_text(f"❓ {question}", reply_markup=kb)
+
+@dp.callback_query(F.data.startswith("quiz_answer"))
+async def quiz_answer(callback: CallbackQuery):
+    _, answer, correct, user_id = callback.data.split(":")
+    child = get_child(callback.from_user.id)
+    if answer == correct:
+        users[child]["points"] += 1
+        await ask_question(callback.message, callback.from_user.id)
+    else:
+        await callback.message.edit_text(f"❌ Неправильно, {child}! Правильный ответ: {correct}", reply_markup=back_menu())
+
+# === КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===
+@dp.callback_query(F.data == "rps")
+async def rps_start(callback: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✊ Камень", callback_data="rps:камень"),
+         InlineKeyboardButton(text="✌️ Ножницы", callback_data="rps:ножницы"),
+         InlineKeyboardButton(text="✋ Бумага", callback_data="rps:бумага")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+    ])
+    await callback.message.edit_text("Выбирай! ✊✌️✋", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("rps:"))
-async def rps_play(callback: types.CallbackQuery):
-    try:
-        user_choice = callback.data.split(":")[1]
-    except Exception:
-        await callback.answer()
-        return
-    bot_choice = random.choice(["rock", "paper", "scissors"])
-    # определяем победителя
-    outcome = None  # "win", "lose", "draw"
-    if user_choice == bot_choice:
-        outcome = "draw"
-    elif (user_choice == "rock" and bot_choice == "scissors") or \
-         (user_choice == "paper" and bot_choice == "rock") or \
-         (user_choice == "scissors" and bot_choice == "paper"):
-        outcome = "win"
+async def rps_play(callback: CallbackQuery):
+    player = callback.data.split(":")[1]
+    bot_choice = random.choice(["камень", "ножницы", "бумага"])
+    if player == bot_choice:
+        result = "Ничья!"
+    elif (player == "камень" and bot_choice == "ножницы") or \
+         (player == "ножницы" and bot_choice == "бумага") or \
+         (player == "бумага" and bot_choice == "камень"):
+        result = "Ты выиграл 🎉"
     else:
-        outcome = "lose"
+        result = "Я выиграл 😎"
+    await callback.message.edit_text(f"Ты выбрал {player}, я выбрал {bot_choice}. {result}", reply_markup=back_menu())
 
-    emoji_name = {"rock": "✊ Камень", "paper": "✋ Бумага", "scissors": "✌️ Ножницы"}
+# === УГАДАЙ ЖИВОТНОЕ ===
+@dp.callback_query(F.data == "animal")
+async def animal_start(callback: CallbackQuery):
+    correct = random.choice(animals)
+    callback.bot_data["animal"] = correct
+    options = random.sample(animals, 3)
+    if correct not in options:
+        options[0] = correct
+    random.shuffle(options)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=a, callback_data=f"animal:{a}:{correct}")] for a in options
+    ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
+    await callback.message.edit_text("Какое животное я загадал? 🐾", reply_markup=kb)
 
-    if outcome == "win":
-        add_point(callback.from_user.id, 2)
-        await callback.message.answer(f"Я выбрал(а) {emoji_name[bot_choice]}. Ты победил(а)! 🎉 +2 очка!", reply_markup=back_menu())
-    elif outcome == "lose":
-        await callback.message.answer(f"Я выбрал(а) {emoji_name[bot_choice]}. К сожалению, ты проиграл(а). Попробуй ещё! 😊", reply_markup=back_menu())
+@dp.callback_query(F.data.startswith("animal:"))
+async def animal_check(callback: CallbackQuery):
+    _, choice, correct = callback.data.split(":")
+    if choice == correct:
+        await callback.message.edit_text(f"🎉 Верно! Это {correct}", reply_markup=back_menu())
     else:
-        await callback.message.answer(f"Мы оба выбрали {emoji_name[bot_choice]}. Ничья! 🤝", reply_markup=back_menu())
-    await callback.answer()
+        await callback.message.edit_text(f"❌ Нет! Я загадал {correct}", reply_markup=back_menu())
 
-# === Сюрприз ===
-@dp.callback_query(F.data == "surprise")
-async def surprise(callback: types.CallbackQuery):
-    name = user_to_name.get(callback.from_user.id)
-    if not name:
-        await callback.message.answer("Я тебя пока не знаю 😕", reply_markup=back_menu())
-        await callback.answer()
-        return
+# === МАТЕМАТИЧЕСКИЙ ЧЕЛЛЕНДЖ ===
+@dp.callback_query(F.data == "math")
+async def math_start(callback: CallbackQuery):
+    await send_math_task(callback.message, callback.from_user.id)
 
-    choice = random.choice(["fact", "joke", "task", "mini_quiz"])
-    if choice == "fact":
-        text = random.choice(profiles[name]["facts"])
-        await callback.message.answer("🎉 Сюрприз — факт:\n" + text, reply_markup=back_menu())
-    elif choice == "joke":
-        text = random.choice(profiles[name]["jokes"])
-        await callback.message.answer("🎉 Сюрприз — шутка:\n" + text, reply_markup=back_menu())
-    elif choice == "task":
-        text = random.choice(profiles[name]["tasks"])
-        add_point(callback.from_user.id, 1)
-        await callback.message.answer("🎉 Сюрприз — задание:\n" + text, reply_markup=back_menu())
-        await callback.message.answer(f"Ты получил(а) 1 очко! 🎯 Всего: {get_points(callback.from_user.id)}", reply_markup=back_menu())
-    elif choice == "mini_quiz":
-        # быстрая захардкоженная мини-викторина (1 вопрос)
-        q = random.choice(quiz_questions)
-        # используем опции как кнопки, но пометим callback как quickquiz so it won't interfere
-        buttons = []
-        for idx, opt in enumerate(q["options"]):
-            buttons.append([InlineKeyboardButton(text=opt, callback_data=f"quickquiz:{q['q']}:{idx}:{q['answer_index']}")])
-        buttons.append([InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")])
-        kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-        await callback.message.answer("🎉 Сюрприз — мини-викторина:\n" + q["q"], reply_markup=kb)
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("quickquiz:"))
-async def quickquiz_answer(callback: types.CallbackQuery):
-    # формат quickquiz:question_text:chosen_idx:correct_idx
-    parts = callback.data.split(":", 3)
-    if len(parts) < 4:
-        await callback.answer()
-        return
-    _, q_text, chosen_idx, correct_idx = parts
-    chosen_idx = int(chosen_idx); correct_idx = int(correct_idx)
-    if chosen_idx == correct_idx:
-        add_point(callback.from_user.id, 2)
-        await callback.message.answer("Правильно! 🎉 +2 очка!", reply_markup=back_menu())
+async def send_math_task(message: Message, user_id: int):
+    a, b = random.randint(1, 10), random.randint(1, 10)
+    op = random.choice(["+", "-", "×"])
+    if op == "+":
+        correct = a + b
+    elif op == "-":
+        correct = a - b
     else:
-        await callback.message.answer("Неправильно — в другой раз получится! 😊", reply_markup=back_menu())
-    await callback.answer()
+        correct = a * b
+    options = [correct, correct + 1, correct - 1, random.randint(1, 20)]
+    random.shuffle(options)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=str(opt), callback_data=f"math_answer:{opt}:{correct}:{user_id}")] for opt in options
+    ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
+    await message.edit_text(f"Сколько будет {a} {op} {b}?", reply_markup=kb)
 
-# === Очки ===
+@dp.callback_query(F.data.startswith("math_answer"))
+async def math_answer(callback: CallbackQuery):
+    _, answer, correct, user_id = callback.data.split(":")
+    child = get_child(callback.from_user.id)
+    if answer == correct:
+        users[child]["points"] += 1
+        await send_math_task(callback.message, callback.from_user.id)
+    else:
+        await callback.message.edit_text(f"❌ Неправильно! Правильный ответ: {correct}", reply_markup=back_menu())
+
+# === ОЧКИ ===
 @dp.callback_query(F.data == "points")
-async def points_handler(callback: types.CallbackQuery):
-    await callback.message.answer(
-        f"У тебя {get_points(callback.from_user.id)} очков 🎯",
-        reply_markup=back_menu()
-    )
-    await callback.answer()
+async def show_points(callback: CallbackQuery):
+    child = get_child(callback.from_user.id)
+    await callback.message.edit_text(f"{child}, у тебя {users[child]['points']} очков 🏆", reply_markup=back_menu())
 
-# === Дни ===
-@dp.callback_query(F.data == "days")
-async def days(callback: types.CallbackQuery):
-    await callback.message.answer("Выбери событие:", reply_markup=days_menu())
-    await callback.answer()
+# === КТО Я ===
+@dp.callback_query(F.data == "whoami")
+async def whoami(callback: CallbackQuery):
+    child = get_child(callback.from_user.id)
+    data = users[child]
+    text = f"👤 Имя: {child}\n🎂 День рождения: {data['birthday']}\n🏆 Очки: {data['points']}"
+    await callback.message.edit_text(text, reply_markup=back_menu())
 
-@dp.callback_query(F.data.startswith("days_"))
-async def days_event(callback: types.CallbackQuery):
-    data = callback.data
-    if data == "days_alice":
-        target = profiles["Алиса"]["birthday"]
-        text = f"До дня рождения Алисы 🎂 осталось {days_until(target)} дней!"
-    elif data == "days_ruslan":
-        target = profiles["Руслан"]["birthday"]
-        text = f"До дня рождения Руслана 🎂 осталось {days_until(target)} дней!"
-    elif data == "days_newyear":
-        target = common_dates["new_year"]
-        text = f"До Нового года 🎄 осталось {days_until(target)} дней!"
-    elif data == "days_holidays":
-        target = common_dates["summer_holidays"]
-        text = f"До летних каникул ☀️ осталось {days_until(target)} дней!"
-    else:
-        text = "Неизвестное событие."
-    await callback.message.answer(text, reply_markup=back_menu())
-    await callback.answer()
+# === СКОЛЬКО ДНЕЙ ДО ДР ===
+def days_until(date_str):
+    bday = datetime.strptime(date_str, "%Y-%m-%d").date()
+    today = datetime.today().date()
+    next_bday = bday.replace(year=today.year)
+    if next_bday < today:
+        next_bday = next_bday.replace(year=today.year + 1)
+    return (next_bday - today).days
 
-# === Запуск ===
+@dp.callback_query(F.data == "birthday")
+async def birthday(callback: CallbackQuery):
+    child = get_child(callback.from_user.id)
+    days = days_until(users[child]["birthday"])
+    await callback.message.edit_text(f"До дня рождения {child} осталось {days} дней 🎉", reply_markup=back_menu())
+
+# === ЗАПУСК БОТА ===
 async def main():
-    print("Бот запущен...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
