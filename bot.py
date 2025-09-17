@@ -132,7 +132,9 @@ async def riddle_answer(callback: CallbackQuery):
 @dp.callback_query(F.data == "guessnum")
 async def guessnum_start(callback: CallbackQuery):
     number = random.randint(1, 10)
-    current_games[callback.from_user.id] = {"guessnum": number}
+    uid = callback.from_user.id
+    current_games.setdefault(uid, {})
+    current_games[uid]['guessnum'] = number
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(1, 6)],
         [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(6, 11)],
@@ -142,27 +144,47 @@ async def guessnum_start(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("guess:"))
 async def guessnum_check(callback: CallbackQuery):
-    number = current_games.get(callback.from_user.id, {}).get("guessnum", 0)
+    uid = callback.from_user.id
+    number = current_games.get(uid, {}).get("guessnum", None)
     choice = int(callback.data.split(":")[1])
+    if number is None:
+        # нет активной игры — предложим начать заново
+        await callback.message.edit_text("Игра не запущена. Нажми снова 'Угадай число'.", reply_markup=main_menu())
+        return
+
     if choice == number:
         await callback.message.edit_text(f"🎉 Молодец! Это {number}!", reply_markup=back_menu())
+        # очищаем игру
+        current_games[uid].pop('guessnum', None)
     else:
-        await callback.message.edit_text(f"Нет 😅 Это не {choice}.", reply_markup=back_menu())
+        # повторяем тот же вопрос и клавиатуру
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(1, 6)],
+            [InlineKeyboardButton(text=str(i), callback_data=f"guess:{i}") for i in range(6, 11)],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+        ])
+        await callback.message.edit_text(f"Нет 😅 Это не {choice}. Подумай ещё раз!", reply_markup=kb)
 
 # === ВИКТОРИНА ===
 @dp.callback_query(F.data == "quiz")
 async def quiz_start(callback: CallbackQuery):
     user_id = callback.from_user.id
     asked_questions[user_id] = []
+    current_games.setdefault(user_id, {})
     await ask_question(callback.message, user_id)
 
 async def ask_question(message: Message, user_id: int):
     available = [q for q in quiz_questions if q not in asked_questions[user_id]]
     if not available:
         await message.edit_text("Ты ответил на все вопросы! 🎉", reply_markup=back_menu())
+        # очистим текущее состояние викторины
+        current_games.get(user_id, {}).pop('quiz', None)
         return
     question, options, correct = random.choice(available)
-    asked_questions[user_id].append((question, options, correct))
+    # сохраняем текущую вопрос-строку в current_games, но не помечаем как отвеченный
+    current_games.setdefault(user_id, {})
+    current_games[user_id]['quiz'] = (question, options, correct)
+
     kb = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_answer:{opt}:{correct}")]
                          for opt in options] +
@@ -172,13 +194,41 @@ async def ask_question(message: Message, user_id: int):
 
 @dp.callback_query(F.data.startswith("quiz_answer"))
 async def quiz_answer(callback: CallbackQuery):
-    _, answer, correct = callback.data.split(":")
-    child = get_child(callback.from_user.id)
+    parts = callback.data.split(":")
+    # формат: quiz_answer:{opt}:{correct}
+    if len(parts) < 3:
+        await callback.answer("Ошибка данных.")
+        return
+    _, answer, correct = parts
+    uid = callback.from_user.id
+    child = get_child(uid)
+
+    # берём текущую викторину из состояния (для повторного показа при ошибке)
+    qdata = current_games.get(uid, {}).get('quiz', None)
+    if qdata is None:
+        await callback.message.edit_text("Вопрос недоступен. Нажми 'Викторина' чтобы начать заново.", reply_markup=main_menu())
+        return
+
+    question, options, correct_saved = qdata
+
     if answer == correct:
-        users[child]["points"] += 1
-        await ask_question(callback.message, callback.from_user.id)
+        # правильный — начисляем очки, помечаем вопрос как заданный и даём следующий
+        if child:
+            users[child]["points"] += 1
+        # помечаем вопрос как заданный (чтобы не повторялся)
+        asked_questions.setdefault(uid, []).append(qdata)
+        # удаляем текущее состояние викторины
+        current_games[uid].pop('quiz', None)
+        await ask_question(callback.message, uid)
     else:
-        await callback.message.edit_text(f"❌ Неправильно, {child}! Правильный ответ: {correct}", reply_markup=back_menu())
+        # неправильный — не заканчиваем, предлагаем подумать ещё раз и показываем те же варианты
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_answer:{opt}:{correct_saved}")]
+                             for opt in options] +
+                            [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]]
+        )
+        name_part = f", {child}" if child else ""
+        await callback.message.edit_text(f"❌ Неправильно{name_part}! Подумай ещё раз.", reply_markup=kb)
 
 # === КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===
 @dp.callback_query(F.data == "rps")
@@ -209,11 +259,16 @@ async def rps_play(callback: CallbackQuery):
 @dp.callback_query(F.data == "animal")
 async def animal_start(callback: CallbackQuery):
     correct = random.choice(animals)
-    current_games[callback.from_user.id] = {"animal": correct}
+    uid = callback.from_user.id
+    current_games.setdefault(uid, {})
+    current_games[uid]['animal'] = {}
     options = random.sample(animals, 3)
     if correct not in options:
         options[0] = correct
     random.shuffle(options)
+    current_games[uid]['animal']['correct'] = correct
+    current_games[uid]['animal']['options'] = options
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=a, callback_data=f"animal:{a}:{correct}")] for a in options
     ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
@@ -221,11 +276,27 @@ async def animal_start(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("animal:"))
 async def animal_check(callback: CallbackQuery):
-    _, choice, correct = callback.data.split(":")
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer("Ошибка данных.")
+        return
+    _, choice, correct = parts
+    uid = callback.from_user.id
+    state = current_games.get(uid, {}).get('animal', None)
+    if state is None:
+        await callback.message.edit_text("Игра не запущена. Нажми 'Угадай животное' чтобы начать.", reply_markup=main_menu())
+        return
+
     if choice == correct:
         await callback.message.edit_text(f"🎉 Верно! Это {correct}", reply_markup=back_menu())
+        current_games[uid].pop('animal', None)
     else:
-        await callback.message.edit_text(f"❌ Нет! Я загадал {correct}", reply_markup=back_menu())
+        # показываем ту же клавиатуру с теми же опциями
+        options = state['options']
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=a, callback_data=f"animal:{a}:{state['correct']}")] for a in options
+        ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
+        await callback.message.edit_text("❌ Нет! Подумай ещё раз.", reply_markup=kb)
 
 # === МАТЕМАТИЧЕСКИЙ ЧЕЛЛЕНДЖ ===
 @dp.callback_query(F.data == "math")
@@ -243,6 +314,10 @@ async def send_math_task(message: Message, user_id: int):
         correct = a * b
     options = [correct, correct + 1, correct - 1, random.randint(1, 20)]
     random.shuffle(options)
+    # сохраняем задачу в состоянии пользователя
+    current_games.setdefault(user_id, {})
+    current_games[user_id]['math'] = {"a": a, "b": b, "op": op, "correct": correct, "options": options}
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=str(opt), callback_data=f"math_answer:{opt}:{correct}")] for opt in options
     ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
@@ -250,13 +325,32 @@ async def send_math_task(message: Message, user_id: int):
 
 @dp.callback_query(F.data.startswith("math_answer"))
 async def math_answer(callback: CallbackQuery):
-    _, answer, correct = callback.data.split(":")
-    child = get_child(callback.from_user.id)
-    if answer == correct:
-        users[child]["points"] += 1
-        await send_math_task(callback.message, callback.from_user.id)
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer("Ошибка данных.")
+        return
+    _, answer, correct_str = parts
+    uid = callback.from_user.id
+    child = get_child(uid)
+    state = current_games.get(uid, {}).get('math', None)
+    if state is None:
+        await callback.message.edit_text("Задача не активна. Нажми 'Математический челлендж' чтобы начать.", reply_markup=main_menu())
+        return
+
+    if answer == str(state['correct']):
+        if child:
+            users[child]["points"] += 1
+        # удаляем текущее состояние и создаём новую задачу
+        current_games[uid].pop('math', None)
+        await send_math_task(callback.message, uid)
     else:
-        await callback.message.edit_text(f"❌ Неправильно! Правильный ответ: {correct}", reply_markup=back_menu())
+        # повторяем ту же задачу
+        a, b, op = state['a'], state['b'], state['op']
+        options = state['options']
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=str(opt), callback_data=f"math_answer:{opt}:{state['correct']}")] for opt in options
+        ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
+        await callback.message.edit_text(f"❌ Неправильно! Подумай ещё раз.\nСколько будет {a} {op} {b}?", reply_markup=kb)
 
 # === ОЧКИ ===
 @dp.callback_query(F.data == "points")
