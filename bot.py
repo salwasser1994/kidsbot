@@ -3,12 +3,12 @@ import random
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
+API_TOKEN = "ВАШ_ТОКЕН"
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()  # <- исправлено, не передаём bot
+dp = Dispatcher()
 
-# === ДЕТИ (user_id + данные) ===
+# === ДЕТИ ===
 users = {
     "Руслан": {"id": 7894501725, "birthday": "2014-10-04", "points": 0},
     "Алиса": {"id": 7719485802, "birthday": "2016-06-19", "points": 0},
@@ -105,8 +105,7 @@ quiz_questions = [
     ("Какое животное живёт в Антарктиде и умеет плавать?", ["Пингвин", "Белый медведь", "Тюлень", "Кит"], "Пингвин"),
     ("Какая птица самая большая?", ["Страус", "Орёл", "Сова", "Воробей"], "Страус"),
 ]
-
-# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+# === МЕНЮ ===
 def main_menu():
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎮 Игры", callback_data="menu_games"),
@@ -129,8 +128,11 @@ def get_child(user_id: int):
             return name
     return None
 
-# === ОБРАБОТЧИКИ МЕНЮ ===
-@dp.message_handler(F.text)
+# === АКТИВНЫЕ ИГРЫ ===
+active_quiz = {}  # user_id: {"question_index": int, "questions": list, "last_text": Message}
+
+# === ОБРАБОТЧИКИ ===
+@dp.message(F.text)
 async def start_menu(message: Message):
     await message.answer("Главное меню:", reply_markup=main_menu())
 
@@ -138,7 +140,6 @@ async def start_menu(message: Message):
 async def back(callback: CallbackQuery):
     await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
 
-# === ПОДМЕНЮ ИГР ===
 @dp.callback_query(F.data == "menu_games")
 async def menu_games(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -149,13 +150,10 @@ async def menu_games(callback: CallbackQuery):
     ])
     await callback.message.edit_text("🎮 Игры — выбери:", reply_markup=kb)
 
-# === ВИКТОРИНА ===
-active_quiz = {}  # user_id: {"question_index": int, "questions": list, "last_text": Message}
-
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
-    await callback.message.delete()  # удаляем сообщение с подменю "Игры"
+    await callback.message.delete()
     if not user_name:
         await callback.message.answer("Играть могут только зарегистрированные дети.")
         return
@@ -163,7 +161,6 @@ async def start_quiz(callback: CallbackQuery):
     await callback.message.answer(
         f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!"
     )
-    
     questions = quiz_questions.copy()
     random.shuffle(questions)
     active_quiz[callback.from_user.id] = {
@@ -171,26 +168,22 @@ async def start_quiz(callback: CallbackQuery):
         "questions": questions,
         "last_text": None
     }
-
     await send_quiz_question(callback.from_user.id, callback.message.chat.id)
 
 async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz[user_id]
     q_index = quiz["question_index"]
-
     if q_index >= len(quiz["questions"]):
         await bot.send_message(chat_id, f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}")
         del active_quiz[user_id]
         return
 
     question, options, answer = quiz["questions"][q_index]
-
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)
     ] + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]])
 
     text = f"{result_text}\nВопрос {q_index + 1}: {question}" if result_text else f"Вопрос {q_index + 1}: {question}"
-
     if quiz["last_text"]:
         await quiz["last_text"].edit_text(text, reply_markup=kb)
     else:
@@ -221,7 +214,6 @@ async def quiz_answer(callback: CallbackQuery):
 
     await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
 
-# === ЗАПУСК БОТА ===
+# === ЗАПУСК ===
 if __name__ == "__main__":
     asyncio.run(dp.start_polling(bot))
-
