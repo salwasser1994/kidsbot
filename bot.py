@@ -129,6 +129,29 @@ def get_child(user_id: int):
             return name
     return None
 
+# === Анимация очков (ускоренная версия) ===
+async def animate_points(message: Message, user_name: str, old_points: int, new_points: int, prefix_text=""):
+    displayed_points = max(0, old_points)
+    target_points = max(0, new_points)
+    
+    step = max(1, (target_points - displayed_points) // 10)  # шаг увеличения, зависит от разницы очков
+    if step == 0:
+        step = 1
+
+    while displayed_points != target_points:
+        if displayed_points < target_points:
+            displayed_points += step
+            if displayed_points > target_points:
+                displayed_points = target_points
+        else:
+            displayed_points -= step
+            if displayed_points < target_points:
+                displayed_points = target_points
+
+        await message.edit_text(f"{prefix_text}🏆 {user_name}, у тебя {displayed_points} очков!")
+        await asyncio.sleep(0.05)
+
+
 # === АКТИВНЫЕ ИГРЫ ===
 active_quiz = {}  # user_id: {"question_index": int, "questions": list, "last_text": Message}
 
@@ -154,19 +177,35 @@ async def menu_games(callback: CallbackQuery):
     ])
     await callback.message.edit_text("🎮 Игры — выбери:", reply_markup=kb)
 
+# === МОИ ОЧКИ с анимацией ===
+@dp.callback_query(F.data == "points")
+async def show_points(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_name = get_child(user_id)
+    if not user_name:
+        await callback.message.edit_text("Только зарегистрированные дети могут видеть свои очки.", reply_markup=back_menu())
+        return
+
+    old_points = 0
+    new_points = users[user_name]["points"]
+
+    kb = back_menu()
+    await callback.message.edit_text("Загружаем очки...", reply_markup=kb)
+    
+    await animate_points(callback.message, user_name, old_points, new_points)
+
 # === ВИКТОРИНА ===
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
+    if not user_name:
+        await callback.message.edit_text("Играть могут только зарегистрированные дети.", reply_markup=back_menu())
+        return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Начать", callback_data="quiz_begin")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
     ])
-
-    if not user_name:
-        await callback.message.edit_text("Играть могут только зарегистрированные дети.", reply_markup=back_menu())
-        return
 
     await callback.message.edit_text(
         f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!",
@@ -192,7 +231,10 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz[user_id]
     q_index = quiz["question_index"]
     if q_index >= len(quiz["questions"]):
-        await quiz["last_text"].edit_text(f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}", reply_markup=back_menu())
+        await quiz["last_text"].edit_text(
+            f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}",
+            reply_markup=back_menu()
+        )
         del active_quiz[user_id]
         return
 
@@ -218,15 +260,18 @@ async def quiz_answer(callback: CallbackQuery):
     chosen_index = int(callback.data.split(":")[1])
     chosen_answer = options[chosen_index]
 
+    old_points = users[user_name]["points"]
+
     if chosen_answer == correct_answer:
         users[user_name]["points"] += 1
         result_text = f"✅ Правильно, молодец {user_name}!"
         quiz["question_index"] += 1
     else:
-        users[user_name]["points"] -= 1
+        users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
-    await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
+    await animate_points(quiz["last_text"], user_name, old_points, users[user_name]["points"], prefix_text=result_text + "\n")
+    await send_quiz_question(user_id, callback.message.chat.id)
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
