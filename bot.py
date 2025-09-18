@@ -7,7 +7,7 @@ from aiogram.exceptions import TelegramBadRequest
 API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)  # Исправлено
+dp = Dispatcher()  # В Aiogram 3 бот не передаётся в конструктор
 
 # === ДЕТИ ===
 users = {
@@ -134,8 +134,8 @@ async def animate_points(message: Message, user_name: str, old_points: int, new_
     displayed_points = max(0, old_points)
     target_points = max(0, new_points)
     step = max(1, abs(target_points - displayed_points) // 10)
-
     last_text = None
+
     while displayed_points != target_points:
         if displayed_points < target_points:
             displayed_points += step
@@ -154,7 +154,6 @@ async def animate_points(message: Message, user_name: str, old_points: int, new_
                 if "message is not modified" not in str(e):
                     raise
             last_text = text_to_show
-
         await asyncio.sleep(0.05)
 
 # === АКТИВНЫЕ ИГРЫ ===
@@ -168,8 +167,7 @@ async def start_menu(message: Message):
 @dp.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
     user_id = callback.from_user.id
-    if user_id in active_quiz:
-        del active_quiz[user_id]
+    active_quiz.pop(user_id, None)
     await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
 
 @dp.callback_query(F.data == "menu_games")
@@ -216,9 +214,9 @@ async def begin_quiz(callback: CallbackQuery):
     questions = quiz_questions.copy()
     random.shuffle(questions)
     active_quiz[user_id] = {"question_index": 0, "questions": questions, "last_text": callback.message}
-    await send_quiz_question(user_id, callback.message.chat.id)
+    await send_quiz_question(user_id)
 
-async def send_quiz_question(user_id, chat_id, result_text=""):
+async def send_quiz_question(user_id, result_text=""):
     quiz = active_quiz[user_id]
     q_index = quiz["question_index"]
 
@@ -263,7 +261,7 @@ async def quiz_answer(callback: CallbackQuery):
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
     await animate_points(quiz["last_text"], user_name, old_points, users[user_name]["points"], prefix_text=result_text + "\n")
-    await send_quiz_question(user_id, callback.message.chat.id)
+    await send_quiz_question(user_id)
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
