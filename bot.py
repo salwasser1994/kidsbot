@@ -21,27 +21,30 @@ quiz_questions = [
     ("Столица Франции?", ["Париж", "Лондон", "Берлин", "Рим"], "Париж"),
     ("Самая длинная река в мире?", ["Амазонка", "Нил", "Волга", "Янцзы"], "Нил"),
     ("Как называется спутник Земли?", ["Марс", "Луна", "Венера", "Сатурн"], "Луна"),
-    # ... (добавь остальные вопросы)
 ]
 
 # === МЕНЮ ===
-def main_menu():
+def main_menu(user_id=None):
+    points_text = ""
+    user_name = get_child(user_id) if user_id else None
+    if user_name:
+        points_text = f"\n🏆 У тебя {users[user_name]['points']} очков"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(text="🎮 Игры", callback_data="menu_games"),
                 InlineKeyboardButton(text="📚 Учёба", callback_data="menu_study"),
-                InlineKeyboardButton(text="📖 Сказки", callback_data="menu_fairytales")
             ],
             [
-                InlineKeyboardButton(text="🏆 Мои очки", callback_data="points"),
-                InlineKeyboardButton(text="👤 Кто я", callback_data="whoami")
+                InlineKeyboardButton(text="📖 Сказки", callback_data="menu_fairytales"),
+                InlineKeyboardButton(text="👤 Кто я", callback_data="whoami"),
             ],
             [
-                InlineKeyboardButton(text="📅 Сколько дней до...", callback_data="birthday")
+                InlineKeyboardButton(text="📅 Сколько дней до...", callback_data="birthday"),
             ]
         ]
-    )
+    ), f"Главное меню:{points_text}"
 
 def back_menu():
     return InlineKeyboardMarkup(
@@ -56,52 +59,24 @@ def get_child(user_id: int):
             return name
     return None
 
-# === Анимация очков ===
-async def animate_points(message: Message, user_name: str, old_points: int, new_points: int, prefix_text=""):
-    displayed_points = max(0, old_points)
-    target_points = max(0, new_points)
-    step = max(1, abs(target_points - displayed_points) // 10 or 1)
-
-    last_text = None
-    while displayed_points != target_points:
-        if displayed_points < target_points:
-            displayed_points += step
-            if displayed_points > target_points:
-                displayed_points = target_points
-        else:
-            displayed_points -= step
-            if displayed_points < target_points:
-                displayed_points = target_points
-
-        text_to_show = f"{prefix_text}🏆 {user_name}, у тебя {displayed_points} очков!"
-        if text_to_show != last_text:
-            try:
-                await message.edit_text(text_to_show)
-            except TelegramBadRequest as e:
-                # Игнорируем "message is not modified"
-                if "message is not modified" not in str(e):
-                    raise
-            last_text = text_to_show
-
-        await asyncio.sleep(0.05)
-
 # === АКТИВНЫЕ ИГРЫ ===
 active_quiz = {}  # user_id: {"question_index": int, "questions": list, "last_text": Message}
 
 # === ОБРАБОТЧИКИ ===
 @dp.message(F.text)
 async def start_menu(message: Message):
-    await message.answer("Главное меню:", reply_markup=main_menu())
+    kb, text = main_menu(message.from_user.id)
+    await message.answer(text, reply_markup=kb)
 
 @dp.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
     user_id = callback.from_user.id
     if user_id in active_quiz:
         del active_quiz[user_id]
+    kb, text = main_menu(user_id)
     try:
-        await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
+        await callback.message.edit_text(text, reply_markup=kb)
     except TelegramBadRequest:
-        # Игнорируем, если текст не изменился
         pass
 
 @dp.callback_query(F.data == "menu_games")
@@ -116,22 +91,6 @@ async def menu_games(callback: CallbackQuery):
         await callback.message.edit_text("🎮 Игры — выбери:", reply_markup=kb)
     except TelegramBadRequest:
         pass
-
-@dp.callback_query(F.data == "points")
-async def show_points(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    user_name = get_child(user_id)
-    if not user_name:
-        await callback.message.edit_text("Только зарегистрированные дети могут видеть свои очки.", reply_markup=back_menu())
-        return
-
-    old_points = 0
-    new_points = users[user_name]["points"]
-    try:
-        await callback.message.edit_text("Загружаем очки...", reply_markup=back_menu())
-    except TelegramBadRequest:
-        pass
-    await animate_points(callback.message, user_name, old_points, new_points)
 
 # === ВИКТОРИНА ===
 @dp.callback_query(F.data == "quiz_start")
@@ -170,9 +129,9 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
 
     q_index = quiz["question_index"]
 
-    # Конец викторины
     if q_index >= len(quiz["questions"]):
-        final_text = f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}"
+        user_name = get_child(user_id)
+        final_text = f"Викторина закончена! Твои очки: {users[user_name]['points']}"
         try:
             await quiz["last_text"].edit_text(final_text, reply_markup=back_menu())
         except TelegramBadRequest:
@@ -180,25 +139,30 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
         del active_quiz[user_id]
         return
 
-    question, options, answer = quiz["questions"][q_index]
+    question, options, _ = quiz["questions"][q_index]
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)]
                      + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]]
     )
 
-    text = f"{result_text}\nВопрос {q_index + 1}: {question}" if result_text else f"Вопрос {q_index + 1}: {question}"
+    user_name = get_child(user_id)
+    points = users[user_name]["points"]
+    text_parts = []
+    if result_text:
+        text_parts.append(result_text)
+        text_parts.append(f"🏆 Очки: {points}")
+    text_parts.append(f"Вопрос {q_index + 1}: {question}")
+    text = "\n".join(text_parts)
 
     try:
         await quiz["last_text"].edit_text(text, reply_markup=kb)
     except TelegramBadRequest as e:
-        # Игнорируем "message is not modified"
         if "message is not modified" not in str(e):
             raise
 
 @dp.callback_query(F.data.startswith("quiz_ans:"))
 async def quiz_answer(callback: CallbackQuery):
-    # подтверждаем callback, чтобы убрать "крутилку"
     await callback.answer()
 
     user_id = callback.from_user.id
@@ -213,29 +177,15 @@ async def quiz_answer(callback: CallbackQuery):
     chosen_answer = options[chosen_index]
 
     user_name = get_child(user_id)
-    old_points = users[user_name]["points"]
 
     if chosen_answer == correct_answer:
         users[user_name]["points"] += 1
         result_text = f"✅ Правильно, молодец {user_name}!"
-        quiz["question_index"] += 1  # переходим к следующему вопросу
+        quiz["question_index"] += 1
     else:
         users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
-        # question_index не меняется — тот же вопрос будет показан снова
 
-    # показываем результат + анимируем очки (внутри animate_points будет редактировать то же сообщение)
-    try:
-        # Запускаем анимацию с префиксом результата (чтобы сразу видно было ✅/❌ и потом счёт)
-        await animate_points(quiz["last_text"], user_name, old_points, users[user_name]["points"], prefix_text=result_text + "\n")
-    except TelegramBadRequest:
-        # на всякий случай, если редактирование упало — всё равно продолжим
-        pass
-
-    # Ждём чуть-чуть, чтобы пользователь успел увидеть итог анимации
-    await asyncio.sleep(0.6)
-
-    # Показываем следующий (или тот же) вопрос и передаём result_text, чтобы он отображался над вопросом
     await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
 
 # === ЗАПУСК ===
