@@ -293,6 +293,21 @@ async def menu_games(callback: CallbackQuery):
     except TelegramBadRequest:
         pass
 
+@dp.callback_query(F.data == "menu_study")
+async def menu_study(callback: CallbackQuery):
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📐 Математика", callback_data="topic:Математика")],
+            [InlineKeyboardButton(text="📖 Литература", callback_data="topic:Литература")],
+            [InlineKeyboardButton(text="🌍 География", callback_data="topic:География")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+        ]
+    )
+    try:
+        await callback.message.edit_text("📚 Учёба — выбери предмет:", reply_markup=kb)
+    except TelegramBadRequest:
+        pass
+
 # === ВИКТОРИНА ===
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
