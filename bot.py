@@ -129,15 +129,16 @@ def get_child(user_id: int):
             return name
     return None
 
-# === Анимация очков (ускоренная версия) ===
+# === Анимация очков с проверкой изменений ===
 async def animate_points(message: Message, user_name: str, old_points: int, new_points: int, prefix_text=""):
     displayed_points = max(0, old_points)
     target_points = max(0, new_points)
     
-    step = max(1, (target_points - displayed_points) // 10)  # шаг увеличения, зависит от разницы очков
+    step = max(1, (target_points - displayed_points) // 10)
     if step == 0:
         step = 1
 
+    last_text = None
     while displayed_points != target_points:
         if displayed_points < target_points:
             displayed_points += step
@@ -148,9 +149,13 @@ async def animate_points(message: Message, user_name: str, old_points: int, new_
             if displayed_points < target_points:
                 displayed_points = target_points
 
-        await message.edit_text(f"{prefix_text}🏆 {user_name}, у тебя {displayed_points} очков!")
-        await asyncio.sleep(0.05)
+        text_to_show = f"{prefix_text}🏆 {user_name}, у тебя {displayed_points} очков!"
+        # редактируем сообщение только если текст реально изменился
+        if text_to_show != last_text:
+            await message.edit_text(text_to_show)
+            last_text = text_to_show
 
+        await asyncio.sleep(0.05)
 
 # === АКТИВНЫЕ ИГРЫ ===
 active_quiz = {}  # user_id: {"question_index": int, "questions": list, "last_text": Message}
@@ -270,6 +275,7 @@ async def quiz_answer(callback: CallbackQuery):
         users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
+    # Анимация очков перед следующим вопросом
     await animate_points(quiz["last_text"], user_name, old_points, users[user_name]["points"], prefix_text=result_text + "\n")
     await send_quiz_question(user_id, callback.message.chat.id)
 
