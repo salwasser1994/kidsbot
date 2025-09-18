@@ -16,6 +16,24 @@ users = {
     "Томас": {"id": 5205381793, "birthday": "1994-04-27", "points": 0},
 }
 
+study_questions = {
+    "Математика": [
+        ("Сколько будет 5 + 7?", ["10", "11", "12", "13"], "12"),
+        ("Сколько углов у треугольника?", ["2", "3", "4", "5"], "3"),
+        ("Какая фигура имеет 4 равные стороны?", ["Квадрат", "Прямоугольник", "Треугольник", "Круг"], "Квадрат"),
+    ],
+    "Литература": [
+        ("Кто написал 'Войну и мир'?", ["Толстой", "Пушкин", "Гоголь", "Чехов"], "Толстой"),
+        ("Кто автор 'Муми-троллей'?", ["Туве Янссон", "Астрид Линдгрен", "Чуковский", "Носов"], "Туве Янссон"),
+        ("Главный герой сказки 'Красная Шапочка'?", ["Красная Шапочка", "Волк", "Бабушка", "Мальчик"], "Красная Шапочка"),
+    ],
+    "География": [
+        ("Столица России?", ["Москва", "Санкт-Петербург", "Казань", "Новосибирск"], "Москва"),
+        ("Самая высокая гора мира?", ["Эверест", "Килиманджаро", "Арарат", "Фудзи"], "Эверест"),
+        ("Самый большой океан?", ["Тихий", "Атлантический", "Индийский", "Северный Ледовитый"], "Тихий"),
+    ]
+}
+
 # === ВИКТОРИНА (100 вопросов) ===
 quiz_questions = [
     ("Кто написал 'Войну и мир'?", ["Толстой", "Пушкин", "Гоголь", "Чехов"], "Толстой"),
@@ -403,6 +421,89 @@ async def quiz_answer(callback: CallbackQuery):
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
     await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
+
+# === ВИКТОРИНА ПО ПРЕДМЕТАМ ===
+active_study = {}  # user_id: {"question_index": int, "questions": list, "last_text": Message}
+
+@dp.callback_query(F.data.startswith("topic:"))
+async def choose_topic(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    topic = callback.data.split(":")[1]
+
+    if topic not in study_questions:
+        await callback.answer("Ошибка: такой темы нет")
+        return
+
+    questions = study_questions[topic].copy()
+    random.shuffle(questions)
+    active_study[user_id] = {"question_index": 0, "questions": questions, "last_text": callback.message}
+    await send_study_question(user_id, callback.message.chat.id)
+
+async def send_study_question(user_id, chat_id, result_text=""):
+    study = active_study.get(user_id)
+    if not study:
+        return
+
+    q_index = study["question_index"]
+
+    if q_index >= len(study["questions"]):
+        user_name = get_child(user_id)
+        final_text = f"Урок завершён! Твои очки: {users[user_name]['points']}"
+        try:
+            await study["last_text"].edit_text(final_text, reply_markup=back_menu())
+        except TelegramBadRequest:
+            pass
+        del active_study[user_id]
+        return
+
+    question, options, _ = study["questions"][q_index]
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"study_ans:{i}")] for i, opt in enumerate(options)]
+                     + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]]
+    )
+
+    user_name = get_child(user_id)
+    points = users[user_name]["points"]
+    text_parts = []
+    if result_text:
+        text_parts.append(result_text)
+        text_parts.append(f"🏆 Очки: {points}")
+    text_parts.append(f"Вопрос {q_index + 1}: {question}")
+    text = "\n".join(text_parts)
+
+    try:
+        await study["last_text"].edit_text(text, reply_markup=kb)
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
+@dp.callback_query(F.data.startswith("study_ans:"))
+async def study_answer(callback: CallbackQuery):
+    await callback.answer()
+
+    user_id = callback.from_user.id
+    if user_id not in active_study:
+        await callback.message.answer("Урок не активен")
+        return
+
+    study = active_study[user_id]
+    q_index = study["question_index"]
+    question, options, correct_answer = study["questions"][q_index]
+    chosen_index = int(callback.data.split(":")[1])
+    chosen_answer = options[chosen_index]
+
+    user_name = get_child(user_id)
+
+    if chosen_answer == correct_answer:
+        users[user_name]["points"] += 1
+        result_text = f"✅ Правильно, молодец {user_name}!"
+        study["question_index"] += 1
+    else:
+        users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
+        result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
+
+    await send_study_question(user_id, callback.message.chat.id, result_text=result_text)
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
