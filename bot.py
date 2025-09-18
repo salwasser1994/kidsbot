@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.exceptions import TelegramBadRequest
 
-API_TOKEN = "ВАШ_ТОКЕН_ЗДЕСЬ"
+API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()  # Aiogram 3.x: Dispatcher без аргументов
