@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)  # передаём бот явно
+dp = Dispatcher()  # <- исправлено, не передаём bot
 
 # === ДЕТИ (user_id + данные) ===
 users = {
@@ -224,3 +224,4 @@ async def quiz_answer(callback: CallbackQuery):
 # === ЗАПУСК БОТА ===
 if __name__ == "__main__":
     asyncio.run(dp.start_polling(bot))
+
