@@ -140,11 +140,7 @@ async def start_menu(message: Message):
 @dp.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
     user_id = callback.from_user.id
-    # Удаляем активную викторину, если есть
     if user_id in active_quiz:
-        quiz = active_quiz[user_id]
-        if quiz["last_text"]:
-            await quiz["last_text"].delete()
         del active_quiz[user_id]
     await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
 
@@ -162,16 +158,17 @@ async def menu_games(callback: CallbackQuery):
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
-    if not user_name:
-        await callback.message.answer("Играть могут только зарегистрированные дети.")
-        return
 
-    await callback.message.delete()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Начать", callback_data="quiz_begin")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
     ])
-    await callback.message.answer(
+
+    if not user_name:
+        await callback.message.edit_text("Играть могут только зарегистрированные дети.", reply_markup=back_menu())
+        return
+
+    await callback.message.edit_text(
         f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!",
         reply_markup=kb
     )
@@ -181,21 +178,21 @@ async def begin_quiz(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_name = get_child(user_id)
 
-    await callback.message.delete()
     questions = quiz_questions.copy()
     random.shuffle(questions)
     active_quiz[user_id] = {
         "question_index": 0,
         "questions": questions,
-        "last_text": None
+        "last_text": callback.message
     }
+
     await send_quiz_question(user_id, callback.message.chat.id)
 
 async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz[user_id]
     q_index = quiz["question_index"]
     if q_index >= len(quiz["questions"]):
-        await bot.send_message(chat_id, f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}")
+        await quiz["last_text"].edit_text(f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}", reply_markup=back_menu())
         del active_quiz[user_id]
         return
 
@@ -205,11 +202,7 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
     ] + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]])
 
     text = f"{result_text}\nВопрос {q_index + 1}: {question}" if result_text else f"Вопрос {q_index + 1}: {question}"
-    if quiz["last_text"]:
-        await quiz["last_text"].edit_text(text, reply_markup=kb)
-    else:
-        msg = await bot.send_message(chat_id, text, reply_markup=kb)
-        quiz["last_text"] = msg
+    await quiz["last_text"].edit_text(text, reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("quiz_ans:"))
 async def quiz_answer(callback: CallbackQuery):
