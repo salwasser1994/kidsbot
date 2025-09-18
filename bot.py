@@ -200,6 +200,7 @@ async def show_points(callback: CallbackQuery):
     await animate_points(callback.message, user_name, old_points, new_points)
 
 # === ВИКТОРИНА ===
+
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
@@ -232,29 +233,47 @@ async def begin_quiz(callback: CallbackQuery):
 
     await send_quiz_question(user_id, callback.message.chat.id)
 
+
 async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz[user_id]
     q_index = quiz["question_index"]
+
+    # Если вопросы закончились
     if q_index >= len(quiz["questions"]):
-        await quiz["last_text"].edit_text(
-            f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}",
-            reply_markup=back_menu()
-        )
+        final_text = f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}"
+        kb = back_menu()
+        try:
+            if quiz["last_text"].text != final_text:
+                await quiz["last_text"].edit_text(final_text, reply_markup=kb)
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
         del active_quiz[user_id]
         return
 
     question, options, answer = quiz["questions"][q_index]
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)
     ] + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]])
 
+    # Формируем текст вопроса
     text = f"{result_text}\nВопрос {q_index + 1}: {question}" if result_text else f"Вопрос {q_index + 1}: {question}"
-    await quiz["last_text"].edit_text(text, reply_markup=kb)
+
+    # Редактируем только если текст изменился
+    try:
+        if quiz["last_text"].text != text:
+            await quiz["last_text"].edit_text(text, reply_markup=kb)
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e):
+            raise
+
 
 @dp.callback_query(F.data.startswith("quiz_ans:"))
 async def quiz_answer(callback: CallbackQuery):
     user_id = callback.from_user.id
     user_name = get_child(user_id)
+
     if user_id not in active_quiz:
         await callback.answer("Викторина не активна")
         return
@@ -277,6 +296,8 @@ async def quiz_answer(callback: CallbackQuery):
 
     # Анимация очков перед следующим вопросом
     await animate_points(quiz["last_text"], user_name, old_points, users[user_name]["points"], prefix_text=result_text + "\n")
+
+    # Отправляем следующий вопрос
     await send_quiz_question(user_id, callback.message.chat.id)
 
 # === ЗАПУСК ===
