@@ -109,18 +109,18 @@ quiz_questions = [
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 def main_menu():
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("🎮 Игры", callback_data="menu_games"),
-         InlineKeyboardButton("📚 Учёба", callback_data="menu_study"),
-         InlineKeyboardButton("📖 Сказки", callback_data="menu_fairytales")],
-        [InlineKeyboardButton("🏆 Мои очки", callback_data="points"),
-         InlineKeyboardButton("👤 Кто я", callback_data="whoami")],
-        [InlineKeyboardButton("📅 Сколько дней до...", callback_data="birthday")]
+        [InlineKeyboardButton(text="🎮 Игры", callback_data="menu_games"),
+         InlineKeyboardButton(text="📚 Учёба", callback_data="menu_study"),
+         InlineKeyboardButton(text="📖 Сказки", callback_data="menu_fairytales")],
+        [InlineKeyboardButton(text="🏆 Мои очки", callback_data="points"),
+         InlineKeyboardButton(text="👤 Кто я", callback_data="whoami")],
+        [InlineKeyboardButton(text="📅 Сколько дней до...", callback_data="birthday")]
     ])
     return kb
 
 def back_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("⬅️ Назад в главное меню", callback_data="back")]
+        [InlineKeyboardButton(text="⬅️ Назад в главное меню", callback_data="back")]
     ])
 
 def get_child(user_id: int):
@@ -142,10 +142,10 @@ async def back(callback: CallbackQuery):
 @dp.callback_query(F.data == "menu_games")
 async def menu_games(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton("🧠 Викторина", callback_data="quiz_start")],
-        [InlineKeyboardButton("✊✌️✋ Камень-ножницы-бумага", callback_data="rps")],
-        [InlineKeyboardButton("🎯 Угадывай", callback_data="guess_menu")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back")]
+        [InlineKeyboardButton(text="🧠 Викторина", callback_data="quiz_start")],
+        [InlineKeyboardButton(text="✊✌️✋ Камень-ножницы-бумага", callback_data="rps")],
+        [InlineKeyboardButton(text="🎯 Угадывай", callback_data="guess_menu")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
     ])
     await callback.message.edit_text("🎮 Игры — выбери:", reply_markup=kb)
 
@@ -178,8 +178,8 @@ async def send_quiz_question(user_id, message):
 
     question, options, answer = quiz["questions"][q_index]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)
-    ] + [[InlineKeyboardButton("⬅️ Назад", callback_data="back")]])
+        [InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)
+    ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
     await message.edit_text(f"Вопрос {q_index + 1}: {question}", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("quiz_ans:"))
