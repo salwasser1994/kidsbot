@@ -2,6 +2,7 @@ import asyncio
 import random
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.exceptions import TelegramBadRequest
 
 API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
@@ -129,7 +130,7 @@ def get_child(user_id: int):
             return name
     return None
 
-# === Анимация очков с проверкой изменений ===
+# === Анимация очков ===
 async def animate_points(message: Message, user_name: str, old_points: int, new_points: int, prefix_text=""):
     displayed_points = max(0, old_points)
     target_points = max(0, new_points)
@@ -150,7 +151,6 @@ async def animate_points(message: Message, user_name: str, old_points: int, new_
                 displayed_points = target_points
 
         text_to_show = f"{prefix_text}🏆 {user_name}, у тебя {displayed_points} очков!"
-        # редактируем сообщение только если текст реально изменился
         if text_to_show != last_text:
             await message.edit_text(text_to_show)
             last_text = text_to_show
@@ -176,8 +176,6 @@ async def back(callback: CallbackQuery):
 async def menu_games(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧠 Викторина", callback_data="quiz_start")],
-        [InlineKeyboardButton(text="✊✌️✋ Камень-ножницы-бумага", callback_data="rps")],
-        [InlineKeyboardButton(text="🎯 Угадывай", callback_data="guess_menu")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
     ])
     await callback.message.edit_text("🎮 Игры — выбери:", reply_markup=kb)
@@ -200,7 +198,6 @@ async def show_points(callback: CallbackQuery):
     await animate_points(callback.message, user_name, old_points, new_points)
 
 # === ВИКТОРИНА ===
-
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
@@ -233,12 +230,10 @@ async def begin_quiz(callback: CallbackQuery):
 
     await send_quiz_question(user_id, callback.message.chat.id)
 
-
 async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz[user_id]
     q_index = quiz["question_index"]
 
-    # Если вопросы закончились
     if q_index >= len(quiz["questions"]):
         final_text = f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}"
         kb = back_menu()
@@ -257,17 +252,14 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
         [InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)
     ] + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]])
 
-    # Формируем текст вопроса
     text = f"{result_text}\nВопрос {q_index + 1}: {question}" if result_text else f"Вопрос {q_index + 1}: {question}"
 
-    # Редактируем только если текст изменился
     try:
         if quiz["last_text"].text != text:
             await quiz["last_text"].edit_text(text, reply_markup=kb)
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e):
             raise
-
 
 @dp.callback_query(F.data.startswith("quiz_ans:"))
 async def quiz_answer(callback: CallbackQuery):
@@ -294,10 +286,7 @@ async def quiz_answer(callback: CallbackQuery):
         users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
-    # Анимация очков перед следующим вопросом
     await animate_points(quiz["last_text"], user_name, old_points, users[user_name]["points"], prefix_text=result_text + "\n")
-
-    # Отправляем следующий вопрос
     await send_quiz_question(user_id, callback.message.chat.id)
 
 # === ЗАПУСК ===
