@@ -3,7 +3,7 @@ import random
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
+API_TOKEN = "ВАШ_ТОКЕН"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -105,6 +105,7 @@ quiz_questions = [
     ("Какое животное живёт в Антарктиде и умеет плавать?", ["Пингвин", "Белый медведь", "Тюлень", "Кит"], "Пингвин"),
     ("Какая птица самая большая?", ["Страус", "Орёл", "Сова", "Воробей"], "Страус"),
 ]
+
 # === МЕНЮ ===
 def main_menu():
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -138,6 +139,13 @@ async def start_menu(message: Message):
 
 @dp.callback_query(F.data == "back")
 async def back(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    # Удаляем активную викторину, если есть
+    if user_id in active_quiz:
+        quiz = active_quiz[user_id]
+        if quiz["last_text"]:
+            await quiz["last_text"].delete()
+        del active_quiz[user_id]
     await callback.message.edit_text("Главное меню:", reply_markup=main_menu())
 
 @dp.callback_query(F.data == "menu_games")
@@ -150,25 +158,38 @@ async def menu_games(callback: CallbackQuery):
     ])
     await callback.message.edit_text("🎮 Игры — выбери:", reply_markup=kb)
 
+# === ВИКТОРИНА ===
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
-    await callback.message.delete()
     if not user_name:
         await callback.message.answer("Играть могут только зарегистрированные дети.")
         return
 
+    await callback.message.delete()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Начать", callback_data="quiz_begin")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+    ])
     await callback.message.answer(
-        f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!"
+        f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!",
+        reply_markup=kb
     )
+
+@dp.callback_query(F.data == "quiz_begin")
+async def begin_quiz(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_name = get_child(user_id)
+
+    await callback.message.delete()
     questions = quiz_questions.copy()
     random.shuffle(questions)
-    active_quiz[callback.from_user.id] = {
+    active_quiz[user_id] = {
         "question_index": 0,
         "questions": questions,
         "last_text": None
     }
-    await send_quiz_question(callback.from_user.id, callback.message.chat.id)
+    await send_quiz_question(user_id, callback.message.chat.id)
 
 async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz[user_id]
