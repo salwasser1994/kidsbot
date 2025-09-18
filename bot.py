@@ -159,10 +159,9 @@ async def start_quiz(callback: CallbackQuery):
         await callback.message.answer("Играть могут только зарегистрированные дети.")
         return
 
-    # Показываем правила перед началом викторины
-    await callback.message.edit_text(
-        f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!",
-        reply_markup=back_menu()
+    # Отправляем правила как отдельное сообщение
+    await callback.message.answer(
+        f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!"
     )
     
     questions = quiz_questions.copy()
@@ -170,27 +169,35 @@ async def start_quiz(callback: CallbackQuery):
     active_quiz[callback.from_user.id] = {
         "question_index": 0,
         "questions": questions,
-        "awaiting_answer": True
+        "last_text": None  # будем хранить сообщение с вопросом
     }
-    await send_quiz_question(callback.from_user.id, callback.message)
 
-async def send_quiz_question(user_id, message):
+    # Отправляем первый вопрос
+    await send_quiz_question(callback.from_user.id, callback.message.chat.id)
+
+async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz[user_id]
     q_index = quiz["question_index"]
+
     if q_index >= len(quiz["questions"]):
-        await message.edit_text(
-            f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}",
-            reply_markup=main_menu()
-        )
+        await bot.send_message(chat_id, f"Викторина закончена! Твои очки: {users[get_child(user_id)]['points']}")
         del active_quiz[user_id]
         return
 
     question, options, answer = quiz["questions"][q_index]
+
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)
-    ] + [[InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]])
-    await message.edit_text(f"Вопрос {q_index + 1}: {question}", reply_markup=kb)
-    quiz["awaiting_answer"] = True  # ожидаем ответ
+    ])
+
+    text = f"{result_text}\nВопрос {q_index + 1}: {question}" if result_text else f"Вопрос {q_index + 1}: {question}"
+
+    # Если уже есть сообщение с вопросом, редактируем его
+    if quiz["last_text"]:
+        await quiz["last_text"].edit_text(text, reply_markup=kb)
+    else:
+        msg = await bot.send_message(chat_id, text, reply_markup=kb)
+        quiz["last_text"] = msg
 
 @dp.callback_query(F.data.startswith("quiz_ans:"))
 async def quiz_answer(callback: CallbackQuery):
@@ -201,10 +208,6 @@ async def quiz_answer(callback: CallbackQuery):
         return
 
     quiz = active_quiz[user_id]
-    if not quiz["awaiting_answer"]:
-        await callback.answer("Подожди, вопрос уже обработан.")
-        return
-
     q_index = quiz["question_index"]
     question, options, correct_answer = quiz["questions"][q_index]
     chosen_index = int(callback.data.split(":")[1])
@@ -212,21 +215,14 @@ async def quiz_answer(callback: CallbackQuery):
 
     if chosen_answer == correct_answer:
         users[user_name]["points"] += 1
-        text = f"✅ Правильно, молодец {user_name}!"
-        quiz["question_index"] += 1  # только здесь переходим к следующему вопросу
+        result_text = f"✅ Правильно, молодец {user_name}!"
+        quiz["question_index"] += 1
     else:
         users[user_name]["points"] -= 1
-        text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
+        result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
-    quiz["awaiting_answer"] = False  # блокируем повторный клик до обновления вопроса
-    await callback.answer(text)
-    
-    # Если правильный ответ, сразу следующий вопрос
-    if chosen_answer == correct_answer:
-        await send_quiz_question(user_id, callback.message)
-    else:
-        # Если неправильный, оставляем тот же вопрос
-        quiz["awaiting_answer"] = True
+    # Отправляем/обновляем сообщение с результатом
+    await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
 
 # === ЗАПУСК БОТА ===
 if __name__ == "__main__":
