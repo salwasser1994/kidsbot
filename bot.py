@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)  # передаём бот явно
 
 # === ДЕТИ (user_id + данные) ===
 users = {
@@ -130,7 +130,7 @@ def get_child(user_id: int):
     return None
 
 # === ОБРАБОТЧИКИ МЕНЮ ===
-@dp.message(F.text)
+@dp.message_handler(F.text)
 async def start_menu(message: Message):
     await message.answer("Главное меню:", reply_markup=main_menu())
 
@@ -150,16 +150,16 @@ async def menu_games(callback: CallbackQuery):
     await callback.message.edit_text("🎮 Игры — выбери:", reply_markup=kb)
 
 # === ВИКТОРИНА ===
-active_quiz = {}  # user_id: {"question_index": int, "questions": list, "awaiting_answer": bool}
+active_quiz = {}  # user_id: {"question_index": int, "questions": list, "last_text": Message}
 
 @dp.callback_query(F.data == "quiz_start")
 async def start_quiz(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
+    await callback.message.delete()  # удаляем сообщение с подменю "Игры"
     if not user_name:
         await callback.message.answer("Играть могут только зарегистрированные дети.")
         return
 
-    # Отправляем правила как отдельное сообщение
     await callback.message.answer(
         f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!"
     )
@@ -169,10 +169,9 @@ async def start_quiz(callback: CallbackQuery):
     active_quiz[callback.from_user.id] = {
         "question_index": 0,
         "questions": questions,
-        "last_text": None  # будем хранить сообщение с вопросом
+        "last_text": None
     }
 
-    # Отправляем первый вопрос
     await send_quiz_question(callback.from_user.id, callback.message.chat.id)
 
 async def send_quiz_question(user_id, chat_id, result_text=""):
@@ -188,11 +187,10 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] for i, opt in enumerate(options)
-    ])
+    ] + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]])
 
     text = f"{result_text}\nВопрос {q_index + 1}: {question}" if result_text else f"Вопрос {q_index + 1}: {question}"
 
-    # Если уже есть сообщение с вопросом, редактируем его
     if quiz["last_text"]:
         await quiz["last_text"].edit_text(text, reply_markup=kb)
     else:
@@ -221,7 +219,6 @@ async def quiz_answer(callback: CallbackQuery):
         users[user_name]["points"] -= 1
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
-    # Отправляем/обновляем сообщение с результатом
     await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
 
 # === ЗАПУСК БОТА ===
