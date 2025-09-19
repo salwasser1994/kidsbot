@@ -206,6 +206,20 @@ all_questions = {
     ]
 }
 
+# === СПИСОК СКАЗОК ===
+fairytales_list = [
+    "Колобок — Жил-был колобок, и покатился он по дорожке...",
+    "Три медведя — Жила-была Маша, и она пошла гулять по лесу...",
+    "Красная Шапочка — Маленькая девочка шла к бабушке через лес...",
+    "Золушка — Жила-была девушка, которую злая мачеха заставляла работать...",
+    "Волк и семеро козлят — Однажды мама-коза ушла по делам, оставив своих козлят...",
+    "Снежная королева — В далёкой северной стране жила Снежная королева...",
+    "Репка — Жили-были дед и бабка, посадили репку...",
+    "Теремок — Маленький теремок стоял в лесу, и начали его заселять звери...",
+    "Приключения Незнайки — Незнайка жил в цветочном городе и попал в разные истории...",
+    "Муха-Цокотуха — Муха нашла монетку и устроила пир для всех насекомых..."
+]
+
 # === МЕНЮ ===
 def main_menu(user_id=None):
     points_text = ""
@@ -220,7 +234,7 @@ def main_menu(user_id=None):
                 InlineKeyboardButton(text="📚 Учёба", callback_data="menu_study"),
             ],
             [
-                InlineKeyboardButton(text="📖 Сказки", callback_data="menu_fairytales"),
+                InlineKeyboardButton(text="📖 Сказки", callback_data="fairy"),
                 InlineKeyboardButton(text="👤 Кто я", callback_data="whoami"),
             ],
             [
@@ -548,6 +562,35 @@ async def show_days_left(callback: CallbackQuery):
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=kb)
+
+# === ОБРАБОТЧИК КНОПКИ СКАЗКИ ===
+@dp.callback_query(F.data == "fairy")
+async def fairy_start(callback: CallbackQuery):
+    # Случайная сказка
+    text = random.choice(fairytales_list)
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="➡️ Следующая сказка", callback_data="fairy_next")],
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=kb)
+
+# === ОБРАБОТЧИК СЛЕДУЮЩЕЙ СКАЗКИ ===
+@dp.callback_query(F.data == "fairy_next")
+async def fairy_next(callback: CallbackQuery):
+    text = random.choice(fairytales_list)
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="➡️ Следующая сказка", callback_data="fairy_next")],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
         ]
     )
