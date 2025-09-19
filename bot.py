@@ -5,6 +5,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from aiogram.exceptions import TelegramBadRequest
 import logging
 
+from datetime import date, datetime, timedelta
+
 API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
 logging.basicConfig(level=logging.INFO)
@@ -222,7 +224,7 @@ def main_menu(user_id=None):
                 InlineKeyboardButton(text="👤 Кто я", callback_data="whoami"),
             ],
             [
-                InlineKeyboardButton(text="📅 Сколько дней до...", callback_data="birthday"),
+                InlineKeyboardButton(text="📅 Сколько дней до...", callback_data="hmd"),
             ]
         ]
     ), f"Главное меню:{points_text}"
@@ -470,6 +472,85 @@ async def rps_play(callback: CallbackQuery):
         f"🏆 Твои очки: {users[user_name]['points']}",
         reply_markup=kb_after
     )
+
+# === ОБРАБОТЧИК СКОЛЬКО ДНЕЙ ДО... ===
+@dp.callback_query(F.data == "hmd")
+async def how_many_days_menu(callback: CallbackQuery):
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎂 День рождения", callback_data="days:birthday")],
+            [InlineKeyboardButton(text="🎄 Новый год", callback_data="days:new_year")],
+            [InlineKeyboardButton(text="🏖 Каникулы", callback_data="days:vacation")],
+            [InlineKeyboardButton(text="🇷🇺 23 февраля", callback_data="days:defender_day")],
+            [InlineKeyboardButton(text="🎉 8 марта", callback_data="days:women_day")],
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
+        ]
+    )
+    await callback.message.edit_text("📅 Выбери событие, чтобы узнать сколько дней осталось:", reply_markup=kb)
+
+# === ФУНКЦИЯ ДЛЯ ПОДСЧЁТА ДНЕЙ ===
+def days_until(target_date: date):
+    today = date.today()
+    # если дата в этом году уже прошла, берем следующий год
+    if target_date < today:
+        target_date = date(today.year + 1, target_date.month, target_date.day)
+    return (target_date - today).days
+
+# === ОБРАБОТЧИК ВЫБОРА СРАБОТАВШЕГО ПРАЗДНИКА ===
+@dp.callback_query(F.data.startswith("days:"))
+async def show_days_left(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_name = get_child(user_id)
+    choice = callback.data.split(":")[1]
+
+    # Задаем даты праздников
+    today = date.today()
+    events = {}
+
+    # День рождения
+    if user_name:
+        birthday_str = users[user_name]["birthday"]  # формат "YYYY-MM-DD"
+        birthday_dt = datetime.strptime(birthday_str, "%Y-%m-%d").date()
+        events["birthday"] = birthday_dt
+    else:
+        events["birthday"] = date(today.year, 1, 1)  # на случай незарегистрированного
+
+    # Новый год
+    events["new_year"] = date(today.year + 1, 1, 1)
+
+    # Каникулы (например, летние: 1 июня)
+    events["vacation"] = date(today.year, 6, 1)
+
+    # 23 февраля
+    events["defender_day"] = date(today.year, 2, 23)
+
+    # 8 марта
+    events["women_day"] = date(today.year, 3, 8)
+
+    # Получаем выбранную дату
+    target_date = events.get(choice)
+    if not target_date:
+        await callback.answer("Событие не найдено!")
+        return
+
+    days_left = days_until(target_date)
+    event_names = {
+        "birthday": "День рождения",
+        "new_year": "Новый год",
+        "vacation": "Каникулы",
+        "defender_day": "23 февраля",
+        "women_day": "8 марта"
+    }
+
+    text = f"До {event_names[choice]} осталось {days_left} дней 🎉"
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        ]
+    )
+
+    await callback.message.edit_text(text, reply_markup=kb)
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
