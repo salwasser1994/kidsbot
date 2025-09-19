@@ -249,7 +249,7 @@ async def start_menu(message: Message):
     kb, text = main_menu(message.from_user.id)
     await message.answer(text, reply_markup=kb)
 
-@dp.callback_query(F.data == "back")
+@dp.callback_query(F.data == "main_menu")
 async def back(callback: CallbackQuery):
     user_id = callback.from_user.id
     if user_id in active_quiz:
