@@ -172,7 +172,7 @@ async def back(callback: CallbackQuery):
 async def menu_games(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🧠 Викторина", callback_data="quiz_start")],
+            [InlineKeyboardButton(text="🧠 Викторина", callback_data="topic:Викторина")],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
         ]
     )
@@ -196,9 +196,9 @@ async def menu_study(callback: CallbackQuery):
     except TelegramBadRequest:
         pass
 
-# === общий обработчик старта викторины или темы ===
-@dp.callback_query(F.data.startswith("topic:") | F.data == "quiz_start")
-async def start_topic_or_quiz(callback: CallbackQuery):
+# === ОБЩИЙ ОБРАБОТЧИК СТАРТА ТЕМЫ/ВИКТОРИНЫ ===
+@dp.callback_query(F.data.startswith("topic:"))
+async def start_topic(callback: CallbackQuery):
     user_name = get_child(callback.from_user.id)
     if not user_name:
         await callback.message.edit_text(
@@ -207,23 +207,18 @@ async def start_topic_or_quiz(callback: CallbackQuery):
         )
         return
 
-    if callback.data == "quiz_start":
-        topic = "Викторина"
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Начать", callback_data=f"quiz_begin:{topic}")],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
-            ]
-        )
+    topic = callback.data.split(":", 1)[1]  # Берём тему
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Начать", callback_data=f"quiz_begin:{topic}")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+        ]
+    )
+
+    if topic == "Викторина":
         text = f"🧠 Викторина!\n\nПравила:\n✅ Правильный ответ: +1 очко\n❌ Неправильный ответ: -1 очко\nУдачи, {user_name}!"
     else:
-        topic = callback.data.split(":")[1]
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Начать", callback_data=f"quiz_begin:{topic}")],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
-            ]
-        )
         text = f"📚 Тема: {topic}\nУдачи, {user_name}!"
 
     try:
@@ -232,11 +227,11 @@ async def start_topic_or_quiz(callback: CallbackQuery):
         pass
 
 
-# === начало конкретной викторины/темы ===
+# === НАЧАЛО КОНКРЕТНОЙ ВИКТОРИНЫ/ТЕМЫ ===
 @dp.callback_query(F.data.startswith("quiz_begin:"))
 async def begin_quiz(callback: CallbackQuery):
     user_id = callback.from_user.id
-    topic = callback.data.split(":")[1]
+    topic = callback.data.split(":", 1)[1]
 
     questions = all_questions.get(topic, []).copy()
     if not questions:
@@ -255,7 +250,7 @@ async def begin_quiz(callback: CallbackQuery):
     await send_quiz_question(user_id, callback.message.chat.id)
 
 
-# === отправка вопроса ===
+# === ОТПРАВКА ВОПРОСА ===
 async def send_quiz_question(user_id, chat_id, result_text=""):
     quiz = active_quiz.get(user_id)
     if not quiz:
@@ -263,6 +258,7 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
 
     q_index = quiz["question_index"]
 
+    # Если вопросы закончились
     if q_index >= len(quiz["questions"]):
         user_name = get_child(user_id)
         final_text = f"{quiz['topic']} закончена! Твои очки: {users[user_name]['points']}"
@@ -275,17 +271,17 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
 
     question, options, correct_answer = quiz["questions"][q_index]
 
-    # Перемешиваем варианты ответов
+    # Перемешиваем варианты ответа
     shuffled_options = options.copy()
     random.shuffle(shuffled_options)
     correct_index = shuffled_options.index(correct_answer)
 
-    # Сохраняем в активной викторине
+    # Сохраняем данные
     quiz["shuffled_options"] = shuffled_options
     quiz["correct_index"] = correct_index
 
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")]
+        inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] 
                          for i, opt in enumerate(shuffled_options)]
                      + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]]
     )
@@ -306,7 +302,7 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
             raise
 
 
-# === обработка ответа ===
+# === ОБРАБОТКА ОТВЕТА ===
 @dp.callback_query(F.data.startswith("quiz_ans:"))
 async def quiz_answer(callback: CallbackQuery):
     await callback.answer()
@@ -317,12 +313,8 @@ async def quiz_answer(callback: CallbackQuery):
         return
 
     quiz = active_quiz[user_id]
-    q_index = quiz["question_index"]
-
-    chosen_index = int(callback.data.split(":")[1])
-    shuffled_options = quiz["shuffled_options"]
+    chosen_index = int(callback.data.split(":", 1)[1])
     correct_index = quiz["correct_index"]
-
     user_name = get_child(user_id)
 
     if chosen_index == correct_index:
