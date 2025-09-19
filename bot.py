@@ -556,21 +556,27 @@ async def show_days_left(callback: CallbackQuery):
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
         ]
     )
 
     await callback.message.edit_text(text, reply_markup=kb)
 
+# === Функция для выбора случайной сказки, отличной от текущей ===
+def get_random_fairy(current_text=None):
+    new_fairy = random.choice(fairytales_list)
+    while new_fairy == current_text and len(fairytales_list) > 1:
+        new_fairy = random.choice(fairytales_list)
+    return new_fairy
+
 # === ОБРАБОТЧИК КНОПКИ СКАЗКИ ===
 @dp.callback_query(F.data == "fairy")
 async def fairy_start(callback: CallbackQuery):
-    # Случайная сказка
-    text = random.choice(fairytales_list)
+    text = get_random_fairy()
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="➡️ Следующая сказка", callback_data="fairy_next")],
+            [InlineKeyboardButton(text="➡️", callback_data="fairy_next")],
             [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
         ]
     )
@@ -580,12 +586,13 @@ async def fairy_start(callback: CallbackQuery):
 # === ОБРАБОТЧИК СЛЕДУЮЩЕЙ СКАЗКИ ===
 @dp.callback_query(F.data == "fairy_next")
 async def fairy_next(callback: CallbackQuery):
-    text = random.choice(fairytales_list)
+    current_text = callback.message.text
+    text = get_random_fairy(current_text)
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="➡️ Следующая сказка", callback_data="fairy_next")],
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+            [InlineKeyboardButton(text="➡️", callback_data="fairy_next")],
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
         ]
     )
 
