@@ -3,11 +3,14 @@ import random
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.exceptions import TelegramBadRequest
+import logging
 
 API_TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 
+logging.basicConfig(level=logging.INFO)
+
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher()  # Aiogram 3.x: Dispatcher без аргументов
+dp = Dispatcher(bot)
 
 # === ДЕТИ ===
 users = {
@@ -470,6 +473,5 @@ async def rps_play(callback: CallbackQuery):
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
-    import logging
     logging.basicConfig(level=logging.INFO)
-    dp.run_polling(bot)
+    asyncio.run(dp.start_polling(bot, skip_updates=True))
