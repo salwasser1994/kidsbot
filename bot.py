@@ -407,8 +407,6 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
         if "message is not modified" not in str(e):
             raise
 
-
-# === ОБРАБОТКА ОТВЕТА ===
 @dp.callback_query(F.data.startswith("quiz_ans:"))
 async def quiz_answer(callback: CallbackQuery):
     await callback.answer()
@@ -419,19 +417,26 @@ async def quiz_answer(callback: CallbackQuery):
         return
 
     quiz = active_quiz[user_id]
-    chosen_index = int(callback.data.split(":", 1)[1])
+    chosen_index = int(callback.data.split(":")[1])  # индекс выбранного варианта
     correct_index = quiz["correct_index"]
-    user_name = get_child(user_id)
 
+    user_name = get_child(user_id)
+    if not user_name:
+        await callback.message.answer("Ты не зарегистрирован.")
+        return
+
+    # Проверяем правильность ответа
     if chosen_index == correct_index:
         users[user_name]["points"] += 1
-        result_text = f"✅ Правильно, молодец {user_name}!"
-        quiz["question_index"] += 1
+        result_text = "✅ Правильно!"
     else:
-        users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
-        result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
+        users[user_name]["points"] -= 1
+        correct_answer = quiz["shuffled_options"][correct_index]
+        result_text = f"❌ Неправильно! Правильный ответ: {correct_answer}"
 
-    await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
+    # Переходим к следующему вопросу
+    quiz["question_index"] += 1
+    await send_quiz_question(user_id, callback.message.chat.id, result_text)
 
 # === КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===
 @dp.callback_query(F.data == "rps")
