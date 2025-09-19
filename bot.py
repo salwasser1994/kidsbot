@@ -496,6 +496,7 @@ def days_until(target_date: date):
         target_date = date(today.year + 1, target_date.month, target_date.day)
     return (target_date - today).days
 
+
 # === ОБРАБОТЧИК ВЫБОРА СРАБОТАВШЕГО ПРАЗДНИКА ===
 @dp.callback_query(F.data.startswith("days:"))
 async def show_days_left(callback: CallbackQuery):
@@ -503,7 +504,6 @@ async def show_days_left(callback: CallbackQuery):
     user_name = get_child(user_id)
     choice = callback.data.split(":")[1]
 
-    # Задаем даты праздников
     today = date.today()
     events = {}
 
@@ -511,7 +511,9 @@ async def show_days_left(callback: CallbackQuery):
     if user_name:
         birthday_str = users[user_name]["birthday"]  # формат "YYYY-MM-DD"
         birthday_dt = datetime.strptime(birthday_str, "%Y-%m-%d").date()
-        events["birthday"] = birthday_dt
+        # Берём только месяц и день, год текущий
+        birthday_this_year = date(today.year, birthday_dt.month, birthday_dt.day)
+        events["birthday"] = birthday_this_year
     else:
         events["birthday"] = date(today.year, 1, 1)  # на случай незарегистрированного
 
