@@ -430,7 +430,7 @@ async def quiz_answer(callback: CallbackQuery):
         users[user_name]["points"] += 1
         result_text = "✅ Правильно!"
     else:
-        users[user_name]["points"] -= 1
+        users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
         correct_answer = quiz["shuffled_options"][correct_index]
         result_text = f"❌ Неправильно!"
 
