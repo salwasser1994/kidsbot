@@ -261,6 +261,7 @@ async def back(callback: CallbackQuery):
 async def menu_games(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="✊✌️✋", callback_data="rps")],
             [InlineKeyboardButton(text="🧠 Викторина", callback_data="topic:Викторина")],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
         ]
@@ -418,6 +419,75 @@ async def quiz_answer(callback: CallbackQuery):
         result_text = f"❌ Неправильно, {user_name}! Попробуй ещё раз."
 
     await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
+
+# === ИГРА КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===
+rps_rules = (
+    "✊ Камень\n✌️ Ножницы\n✋ Бумага\n\n"
+    "Правила:\n"
+    "Камень бьет ножницы\n"
+    "Ножницы режут бумагу\n"
+    "Бумага накрывает камень\n\n"
+    "Выбирай!"
+)
+
+rps_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✊ Камень", callback_data="rps_choice:камень"),
+            InlineKeyboardButton(text="✌️ Ножницы", callback_data="rps_choice:ножницы"),
+            InlineKeyboardButton(text="✋ Бумага", callback_data="rps_choice:бумага"),
+        ],
+    ]
+)
+
+rps_after_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="Играть ещё раз", callback_data="rps_again")],
+        [InlineKeyboardButton(text="⬅️ Назад в игры", callback_data="menu_games")]
+    ]
+)
+
+@dp.callback_query(F.data == "rps")
+async def rps_start(callback: CallbackQuery):
+    user_name = get_child(callback.from_user.id)
+    if not user_name:
+        await callback.message.edit_text("Играть могут только зарегистрированные дети.", reply_markup=back_menu())
+        return
+    try:
+        await callback.message.edit_text(rps_rules, reply_markup=rps_keyboard)
+    except TelegramBadRequest:
+        await callback.message.answer(rps_rules, reply_markup=rps_keyboard)
+
+@dp.callback_query(F.data.startswith("rps_choice:"))
+async def rps_choice(callback: CallbackQuery):
+    user_name = get_child(callback.from_user.id)
+    if not user_name:
+        await callback.answer("Ты не зарегистрирован!")
+        return
+
+    user_choice = callback.data.split(":")[1]
+    bot_choice = random.choice(["камень", "ножницы", "бумага"])
+    emoji_map = {"камень": "✊", "ножницы": "✌️", "бумага": "✋"}
+
+    if user_choice == bot_choice:
+        result_text = "Ничья"
+    elif (user_choice == "камень" and bot_choice == "ножницы") or \
+         (user_choice == "ножницы" and bot_choice == "бумага") or \
+         (user_choice == "бумага" and bot_choice == "камень"):
+        result_text = "Ты выиграл!"
+        users[user_name]["points"] += 1
+    else:
+        result_text = "Ты проиграл!"
+        users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
+
+    await callback.message.answer(f"Ты: {emoji_map[user_choice]}\nБот: {emoji_map[bot_choice]}\n{result_text}\n🏆 Очки: {users[user_name]['points']}")
+    await callback.message.answer("Выбирай:", reply_markup=rps_after_keyboard)
+    await callback.answer()
+
+@dp.callback_query(F.data == "rps_again")
+async def rps_again(callback: CallbackQuery):
+    await callback.message.answer("Выбирай:", reply_markup=rps_keyboard)
+    await callback.answer()
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
