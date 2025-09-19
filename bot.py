@@ -460,6 +460,8 @@ async def rps_start(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("rps_choice:"))
 async def rps_choice(callback: CallbackQuery):
+    await callback.answer()  # чтобы убрать "часики"
+
     user_name = get_child(callback.from_user.id)
     if not user_name:
         await callback.answer("Ты не зарегистрирован!")
@@ -469,8 +471,12 @@ async def rps_choice(callback: CallbackQuery):
     bot_choice = random.choice(["камень", "ножницы", "бумага"])
     emoji_map = {"камень": "✊", "ножницы": "✌️", "бумага": "✋"}
 
+    # 1️⃣ Отправляем сообщение с выбором пользователя
+    await callback.message.answer(f"Ты: {emoji_map[user_choice]}")
+
+    # 2️⃣ Отправляем сообщение с выбором бота и результатом
     if user_choice == bot_choice:
-        result_text = "Ничья"
+        result_text = "Ничья!"
     elif (user_choice == "камень" and bot_choice == "ножницы") or \
          (user_choice == "ножницы" and bot_choice == "бумага") or \
          (user_choice == "бумага" and bot_choice == "камень"):
@@ -480,9 +486,10 @@ async def rps_choice(callback: CallbackQuery):
         result_text = "Ты проиграл!"
         users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
 
-    await callback.message.answer(f"Ты: {emoji_map[user_choice]}\nБот: {emoji_map[bot_choice]}\n{result_text}\n🏆 Очки: {users[user_name]['points']}")
-    await callback.message.answer("Выбирай:", reply_markup=rps_after_keyboard)
-    await callback.answer()
+    await callback.message.answer(
+        f"Бот: {emoji_map[bot_choice]}\n{result_text}\n🏆 Очки: {users[user_name]['points']}",
+        reply_markup=rps_after_keyboard
+    )
 
 @dp.callback_query(F.data == "rps_again")
 async def rps_again(callback: CallbackQuery):
