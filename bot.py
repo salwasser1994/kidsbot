@@ -432,7 +432,7 @@ async def quiz_answer(callback: CallbackQuery):
     else:
         users[user_name]["points"] -= 1
         correct_answer = quiz["shuffled_options"][correct_index]
-        result_text = f"❌ Неправильно! Правильный ответ: {correct_answer}"
+        result_text = f"❌ Неправильно!"
 
     # Переходим к следующему вопросу
     quiz["question_index"] += 1
