@@ -227,7 +227,7 @@ def main_menu(user_id=None):
 def back_menu():
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Назад в главное меню", callback_data="back")]
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
         ]
     )
 
@@ -263,7 +263,7 @@ async def menu_games(callback: CallbackQuery):
         inline_keyboard=[
             [InlineKeyboardButton(text="✊✌️✋", callback_data="rps")],
             [InlineKeyboardButton(text="🧠 Викторина", callback_data="topic:Викторина")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
         ]
     )
     try:
@@ -278,7 +278,7 @@ async def menu_study(callback: CallbackQuery):
             [InlineKeyboardButton(text="📐 Математика", callback_data="topic:Математика")],
             [InlineKeyboardButton(text="📖 русский язык", callback_data="topic:русский язык")],
             [InlineKeyboardButton(text="🌍 География", callback_data="topic:География")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
         ]
     )
     try:
@@ -293,7 +293,7 @@ async def start_topic(callback: CallbackQuery):
     if not user_name:
         await callback.message.edit_text(
             "Играть могут только зарегистрированные дети.",
-            reply_markup=back_menu()
+            reply_markup=main_menu()
         )
         return
 
@@ -302,7 +302,7 @@ async def start_topic(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Начать", callback_data=f"quiz_begin:{topic}")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+            [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
         ]
     )
 
@@ -328,7 +328,7 @@ async def begin_quiz(callback: CallbackQuery):
 
     questions = all_questions.get(topic, []).copy()
     if not questions:
-        await callback.message.edit_text("Вопросы для этой темы пока не добавлены.", reply_markup=back_menu())
+        await callback.message.edit_text("Вопросы для этой темы пока не добавлены.", reply_markup=main_menu())
         return
 
     random.shuffle(questions)  # Перемешиваем вопросы
@@ -356,7 +356,7 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
         user_name = get_child(user_id)
         final_text = f"{quiz['topic']} закончена! Твои очки: {users[user_name]['points']}"
         try:
-            await quiz["last_text"].edit_text(final_text, reply_markup=back_menu())
+            await quiz["last_text"].edit_text(final_text, reply_markup=main_menu())
         except TelegramBadRequest:
             pass
         del active_quiz[user_id]
@@ -376,7 +376,7 @@ async def send_quiz_question(user_id, chat_id, result_text=""):
     kb = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text=opt, callback_data=f"quiz_ans:{i}")] 
                          for i, opt in enumerate(shuffled_options)]
-                     + [[InlineKeyboardButton(text="⬅️ Назад в меню", callback_data="back")]]
+                     + [[InlineKeyboardButton(text="🏠", callback_data="main_menu")]]
     )
 
     user_name = get_child(user_id)
@@ -420,81 +420,53 @@ async def quiz_answer(callback: CallbackQuery):
 
     await send_quiz_question(user_id, callback.message.chat.id, result_text=result_text)
 
-# === ИГРА КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===
-rps_rules = (
-    "✊ Камень\n✌️ Ножницы\n✋ Бумага\n\n"
-    "Правила:\n"
-    "Камень бьет ножницы\n"
-    "Ножницы режут бумагу\n"
-    "Бумага накрывает камень\n\n"
-    "Выбирай!"
-)
-
-rps_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✊ Камень", callback_data="rps_choice:камень"),
-            InlineKeyboardButton(text="✌️ Ножницы", callback_data="rps_choice:ножницы"),
-            InlineKeyboardButton(text="✋ Бумага", callback_data="rps_choice:бумага"),
-        ],
-    ]
-)
-
-rps_after_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="Играть ещё раз", callback_data="rps_again")],
-        [InlineKeyboardButton(text="⬅️ Назад в игры", callback_data="menu_games")]
-    ]
-)
-
+# === КАМЕНЬ-НОЖНИЦЫ-БУМАГА ===
 @dp.callback_query(F.data == "rps")
 async def rps_start(callback: CallbackQuery):
-    user_name = get_child(callback.from_user.id)
-    if not user_name:
-        await callback.message.edit_text("Играть могут только зарегистрированные дети.", reply_markup=back_menu())
-        return
-    try:
-        await callback.message.edit_text(rps_rules, reply_markup=rps_keyboard)
-    except TelegramBadRequest:
-        await callback.message.answer(rps_rules, reply_markup=rps_keyboard)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✊ Камень", callback_data="rps:камень"),
+         InlineKeyboardButton(text="✌️ Ножницы", callback_data="rps:ножницы"),
+         InlineKeyboardButton(text="✋ Бумага", callback_data="rps:бумага")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+    ])
+    await callback.message.edit_text("Выбирай! ✊✌️✋", reply_markup=kb)
 
-@dp.callback_query(F.data.startswith("rps_choice:"))
-async def rps_choice(callback: CallbackQuery):
-    await callback.answer()  # чтобы убрать "часики"
-
-    user_name = get_child(callback.from_user.id)
+@dp.callback_query(F.data.startswith("rps:"))
+async def rps_play(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_name = get_child(user_id)
     if not user_name:
         await callback.answer("Ты не зарегистрирован!")
         return
 
-    user_choice = callback.data.split(":")[1]
+    player = callback.data.split(":")[1]
     bot_choice = random.choice(["камень", "ножницы", "бумага"])
     emoji_map = {"камень": "✊", "ножницы": "✌️", "бумага": "✋"}
 
-    # 1️⃣ Отправляем сообщение с выбором пользователя
-    await callback.message.answer(f"Ты: {emoji_map[user_choice]}")
-
-    # 2️⃣ Отправляем сообщение с выбором бота и результатом
-    if user_choice == bot_choice:
-        result_text = "Ничья!"
-    elif (user_choice == "камень" and bot_choice == "ножницы") or \
-         (user_choice == "ножницы" and bot_choice == "бумага") or \
-         (user_choice == "бумага" and bot_choice == "камень"):
-        result_text = "Ты выиграл!"
+    if player == bot_choice:
+        result = "Ничья!"
+    elif (player == "камень" and bot_choice == "ножницы") or \
+         (player == "ножницы" and bot_choice == "бумага") or \
+         (player == "бумага" and bot_choice == "камень"):
+        result = "Ты выиграл 🎉"
         users[user_name]["points"] += 1
     else:
-        result_text = "Ты проиграл!"
+        result = "Я выиграл 😎"
         users[user_name]["points"] = max(0, users[user_name]["points"] - 1)
 
-    await callback.message.answer(
-        f"Бот: {emoji_map[bot_choice]}\n{result_text}\n🏆 Очки: {users[user_name]['points']}",
-        reply_markup=rps_after_keyboard
-    )
+    # Кнопки после игры
+    kb_after = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎮 Ещё раз", callback_data="rps")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+    ])
 
-@dp.callback_query(F.data == "rps_again")
-async def rps_again(callback: CallbackQuery):
-    await callback.message.answer("Выбирай:", reply_markup=rps_keyboard)
-    await callback.answer()
+    await callback.message.edit_text(
+        f"Ты: {emoji_map[player]}\n"
+        f"Я: {emoji_map[bot_choice]}\n"
+        f"{result}\n\n"
+        f"🏆 Твои очки: {users[user_name]['points']}",
+        reply_markup=kb_after
+    )
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
