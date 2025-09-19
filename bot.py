@@ -430,7 +430,7 @@ async def rps_start(callback: CallbackQuery):
         [InlineKeyboardButton(text="✊ Камень", callback_data="rps:камень"),
          InlineKeyboardButton(text="✌️ Ножницы", callback_data="rps:ножницы"),
          InlineKeyboardButton(text="✋ Бумага", callback_data="rps:бумага")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back")]
+        [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
     ])
     await callback.message.edit_text("Выбирай! ✊✌️✋", reply_markup=kb)
 
@@ -460,7 +460,7 @@ async def rps_play(callback: CallbackQuery):
     # Кнопки после игры
     kb_after = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎮 Ещё раз", callback_data="rps")],
-        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+        [InlineKeyboardButton(text="🏠", callback_data="main_menu")]
     ])
 
     await callback.message.edit_text(
