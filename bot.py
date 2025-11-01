@@ -1,62 +1,70 @@
-import os
-import re
-import logging
-import requests
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN") or "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
+# ==================== Таблица шифра ====================
+cipher_table = {
+    'А': '☀', 'Б': '☁', 'В': '♣', 'Г': '♦', 'Д': '♥', 'Е': '░', 'Ж': '▒',
+    'З': '▓', 'И': '♤', 'Й': '♧', 'К': '♨', 'Л': '☯', 'М': '▓', 'Н': '▒',
+    'О': '☽', 'П': '♠', 'Р': '☯', 'С': '☢', 'Т': '♦', 'У': '☮', 'Ф': '☾',
+    'Х': '☹', 'Ц': '♣', 'Ч': '☀', 'Ш': '☂', 'Щ': '☁', 'Ы': '♤', 'Ь': '☯',
+    'Э': '░', 'Ю': '☼', 'Я': '☀',
+    'а': '☀', 'б': '☁', 'в': '♣', 'г': '♦', 'д': '♥', 'е': '░', 'ж': '▒',
+    'з': '▓', 'и': '♤', 'й': '♧', 'к': '♨', 'л': '☯', 'м': '▓', 'н': '▒',
+    'о': '☽', 'п': '♠', 'р': '☯', 'с': '☢', 'т': '♦', 'у': '☮', 'ф': '☾',
+    'х': '☹', 'ц': '♣', 'ч': '☀', 'ш': '☂', 'щ': '☁', 'ы': '♤', 'ь': '☯',
+    'э': '░', 'ю': '☼', 'я': '☀',
+    # Цифры
+    '0':'①', '1':'②', '2':'③', '3':'④', '4':'⑤', '5':'⑥', '6':'⑦', '7':'⑧', '8':'⑨', '9':'⑩',
+    # Знаки препинания
+    ' ': '•', ',': '✕', '.': '✦', '!': '⚡', '?': '☄', '-': '–', ':': '∶', ';': '⁏', '(': '❨', ')': '❩'
+}
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+decipher_table = {v: k for k, v in cipher_table.items()}
 
-def get_oldest_tiktok_video(profile_url: str) -> str:
-    """Находит ссылку на самое старое видео TikTok-аккаунта."""
-    match = re.search(r"tiktok\\.com/@([A-Za-z0-9._]+)", profile_url)
-    if not match:
-        raise ValueError("Некорректная ссылка на TikTok-аккаунт.")
-    username = match.group(1)
+# ==================== Функции ====================
+def encrypt(text):
+    return ''.join(cipher_table.get(ch, ch) for ch in text)
 
-    headers = {"User-Agent": "Mozilla/5.0"}
-    url = f"https://www.tiktok.com/@{username}"
-    logger.info(f"Fetching TikTok profile for @{username}")
-    response = requests.get(url, headers=headers, timeout=10)
-    response.raise_for_status()
+def decrypt(text):
+    return ''.join(decipher_table.get(ch, ch) for ch in text)
 
-    video_ids = re.findall(r'/video/(\\d+)', response.text)
-    if not video_ids:
-        raise RuntimeError("Не удалось найти видео у этого пользователя.")
+def is_encrypted(text):
+    return any(ch in decipher_table for ch in text)
 
-    # Убираем дубликаты и берём последнее (старейшее)
-    video_ids = list(dict.fromkeys(video_ids))
-    oldest_id = video_ids[-1]
-    return f"https://www.tiktok.com/@{username}/video/{oldest_id}"
+# ==================== Настройки ====================
+CHANNEL_ID = "@your_channel_username"  # замените на username вашего канала
+BOT_LINK = "https://t.me/YourBotUsername"  # ссылка на бота для рекламы
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает любое сообщение."""
-    text = update.message.text.strip()
+# ==================== Обработчики ====================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! Пришлите текст который хотите обработать")
 
-    if "tiktok.com" not in text:
-        await update.message.reply_text(
-            "👋 Привет! Пришли ссылку на TikTok-аккаунт, например:\n"
-            "https://www.tiktok.com/@username\n\n"
-            "Я пришлю ссылку на самое старое видео этого аккаунта 🔗"
-        )
-        return
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    username = update.message.from_user.username or update.message.from_user.first_name
 
-    try:
-        video_url = get_oldest_tiktok_video(text)
-        await update.message.reply_text(f"📹 Самое старое видео:\n{video_url}")
-    except Exception as e:
-        logger.exception(e)
-        await update.message.reply_text(f"⚠️ Ошибка: {e}")
+    # Определяем действие
+    if is_encrypted(user_text):
+        result = decrypt(user_text)
+        text_for_channel = result
+    else:
+        result = encrypt(user_text)
+        text_for_channel = user_text
 
-async def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("Bot started.")
-    await app.run_polling()
+    # Ответ пользователю
+    await update.message.reply_text(result)
 
+    # Отправка в канал
+    channel_message = f"{username}\n\"{text_for_channel}\"\n\nПосмотрите бота: {BOT_LINK}"
+    await context.bot.send_message(chat_id=CHANNEL_ID, text=channel_message)
+
+# ==================== Запуск бота ====================
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"  # вставьте токен вашего бота
+    app = ApplicationBuilder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    print("Бот запущен...")
+    app.run_polling()
