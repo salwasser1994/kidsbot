@@ -65,7 +65,7 @@ await context.bot.send_message(chat_id=CHANNEL_ID, text=channel_message)
 # ==================== Запуск бота ====================
 
 if **name** == "**main**":
-TOKEN = "YOUR_BOT_TOKEN_HERE"
+TOKEN = "7174011610:AAGGjDniBS_D1HE_aGSxPA9M6mrGCZOeqNM"
 app = ApplicationBuilder().token(TOKEN).build()
 
 ```
