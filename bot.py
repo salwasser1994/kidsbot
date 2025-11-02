@@ -34,8 +34,10 @@ def is_encrypted(text):
     return text.endswith(KEY_SYMBOL)
 
 # ==================== Настройки ====================
-CHANNEL_ID = "@your_channel_username"
-BOT_LINK = "https://t.me/YourBotUsername"
+CHANNEL_ID = "@salwasser_bot_live"
+BOT_LINK = "@salwasser_bot
+
+@salwasser_bot_live"
 
 # ==================== Обработчики ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
