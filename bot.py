@@ -56,7 +56,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result)
 
     # Попытка отправить в канал (если бот не админ — просто пропускаем)
-    channel_message = f"{username}\n\"{text_for_channel}\"\n{BOT_LINK}"
+    channel_message = f"@{username}\n\n\"{text_for_channel}\"n\\n{BOT_LINK}"
     try:
         await context.bot.send_message(chat_id=CHANNEL_ID, text=channel_message)
     except Exception as e:
