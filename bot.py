@@ -37,8 +37,6 @@ def is_encrypted(text):
 CHANNEL_ID = "@salwasser_bot_live"
 BOT_LINK = "@salwasser_bot"
 
-@salwasser_bot_live"
-
 # ==================== Обработчики ====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Пришлите текст, который хотите зашифровать или расшифровать.")
