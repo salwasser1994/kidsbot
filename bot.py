@@ -35,7 +35,7 @@ def is_encrypted(text):
 
 # ==================== Настройки ====================
 CHANNEL_ID = "@salwasser_bot_live"
-BOT_LINK = "@salwasser_bot
+BOT_LINK = "@salwasser_bot"
 
 @salwasser_bot_live"
 
